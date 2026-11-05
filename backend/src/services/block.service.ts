@@ -106,6 +106,8 @@ export class BlockService {
                 costCenter: true,
                 positionX: true,
                 positionY: true,
+                positionWidth: true,
+                positionHeight: true,
               },
             },
           },
@@ -313,6 +315,66 @@ export class BlockService {
     }
 
     return this.getBlock(blockId);
+  }
+
+  async updateMachineMapPosition(
+    blockId: string,
+    machineId: string,
+    position: {
+      positionX: number;
+      positionY: number;
+      positionWidth: number;
+      positionHeight: number;
+    },
+  ) {
+    const machine = await this.prisma.machine.findFirst({
+      where: { id: machineId, line: { blockId } },
+      select: { id: true, code: true },
+    });
+    if (!machine) {
+      throw new AppError('Máquina não encontrada neste bloco', 404);
+    }
+
+    return this.prisma.machine.update({
+      where: { id: machineId },
+      data: position,
+      select: {
+        id: true,
+        code: true,
+        positionX: true,
+        positionY: true,
+        positionWidth: true,
+        positionHeight: true,
+      },
+    });
+  }
+
+  async clearMachineMapPosition(blockId: string, machineId: string) {
+    const machine = await this.prisma.machine.findFirst({
+      where: { id: machineId, line: { blockId } },
+      select: { id: true, code: true },
+    });
+    if (!machine) {
+      throw new AppError('Máquina não encontrada neste bloco', 404);
+    }
+
+    return this.prisma.machine.update({
+      where: { id: machineId },
+      data: {
+        positionX: null,
+        positionY: null,
+        positionWidth: null,
+        positionHeight: null,
+      },
+      select: {
+        id: true,
+        code: true,
+        positionX: true,
+        positionY: true,
+        positionWidth: true,
+        positionHeight: true,
+      },
+    });
   }
 
   async getPlanImageFile(blockId: string) {

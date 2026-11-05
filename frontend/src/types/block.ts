@@ -49,6 +49,8 @@ export type BlockMachine = {
   costCenter: string | null;
   positionX: number | null;
   positionY: number | null;
+  positionWidth: number | null;
+  positionHeight: number | null;
   expectedPiecesToday: number;
 };
 

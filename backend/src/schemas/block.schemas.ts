@@ -40,6 +40,8 @@ const machineSchema = z.object({
   costCenter: z.string().nullable(),
   positionX: z.number().nullable(),
   positionY: z.number().nullable(),
+  positionWidth: z.number().nullable(),
+  positionHeight: z.number().nullable(),
   expectedPiecesToday: z.number(),
 });
 

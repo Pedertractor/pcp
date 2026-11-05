@@ -7,6 +7,11 @@ import {
   updateBlockCostCentersController,
   uploadBlockPlanImageController,
 } from '../controllers/block.controller.js';
+import { syncBlockPlanningFromXlsController } from '../controllers/planning-sync.controller.js';
+import {
+  clearMachineMapPositionController,
+  updateMachineMapPositionController,
+} from '../controllers/machine-map.controller.js';
 import {
   blockDetailSchema,
   blockIdParamsSchema,
@@ -17,6 +22,16 @@ import {
   type CreateBlockBody,
   type UpdateBlockCostCentersBody,
 } from '../schemas/block.schemas.js';
+import {
+  planningSyncResultSchema,
+} from '../schemas/planning-sync.schemas.js';
+import {
+  machineMapPositionBodySchema,
+  machineMapPositionParamsSchema,
+  machineMapPositionResponseSchema,
+  type MachineMapPositionBody,
+  type MachineMapPositionParams,
+} from '../schemas/machine-map.schemas.js';
 import { commonErrors, errorSchema } from '../schemas/error.schemas.js';
 
 export function blockRoutes(fastify: FastifyInstance) {
@@ -110,6 +125,63 @@ export function blockRoutes(fastify: FastifyInstance) {
       onRequest: [fastify.authenticate, fastify.csrfProtection],
     },
     uploadBlockPlanImageController,
+  );
+
+  fastify.post<{ Params: BlockIdParams }>(
+    '/:id/planning-sync',
+    {
+      schema: {
+        summary: 'Import planning rows from XLS (simulates base API)',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        consumes: ['multipart/form-data'],
+        params: blockIdParamsSchema,
+        response: {
+          200: planningSyncResultSchema.describe('Planning sync result'),
+          ...commonErrors,
+          413: errorSchema.describe('Payload Too Large'),
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    syncBlockPlanningFromXlsController,
+  );
+
+  fastify.patch<{ Params: MachineMapPositionParams; Body: MachineMapPositionBody }>(
+    '/:id/machines/:machineId/map-position',
+    {
+      schema: {
+        summary: 'Save machine position on the block plan',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: machineMapPositionParamsSchema,
+        body: machineMapPositionBodySchema,
+        response: {
+          200: machineMapPositionResponseSchema,
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    updateMachineMapPositionController,
+  );
+
+  fastify.delete<{ Params: MachineMapPositionParams }>(
+    '/:id/machines/:machineId/map-position',
+    {
+      schema: {
+        summary: 'Remove machine from the block plan map',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: machineMapPositionParamsSchema,
+        response: {
+          200: machineMapPositionResponseSchema,
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    clearMachineMapPositionController,
   );
 
   fastify.get<{ Params: BlockIdParams }>(

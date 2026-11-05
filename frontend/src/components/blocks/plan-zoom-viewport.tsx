@@ -109,6 +109,9 @@ export function PlanZoomViewport({ children, className }: PlanZoomViewportProps)
   }, []);
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if ((event.target as Element).closest('[data-map-interactive]')) {
+      return;
+    }
     if (view.scale === MIN_SCALE || event.button !== 0) {
       return;
     }

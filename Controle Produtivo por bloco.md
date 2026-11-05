@@ -260,6 +260,8 @@ Regras:
 - Uma máquina não é apagada por deixar de aparecer nas consultas.
 - Uma OF sem centro de custo vinculado a algum bloco não cria linha nem máquina. Ela deve ficar registrada para análise.
 
+**Simulação (planilha / teste):** enquanto a consulta oficial não está integrada, é possível importar um `.xls` com o mesmo layout da consulta 1 via `POST /api/blocks/:id/planning-sync` (multipart: `file`, `referenceDate` AAAA-MM-DD, `costCenters` JSON ex. `["2530","2540"]`, opcional `assignDemoPositions=true` para posicionar máquinas em grade no mapa). Script local: `npm run sync:planning` no backend (usa a planilha do Downloads e o bloco cujo nome contém `F`). Centros de custo são normalizados com cinco dígitos (`2530` → `02530`, como na planilha).
+
 ### 5.3. Posicionamento das máquinas no mapa
 
 O posicionamento acontece **depois** que as máquinas forem criadas pela sincronização.

@@ -359,6 +359,16 @@ export const httpClient = {
       data: body,
     });
   },
+  delete<TResponse>(
+    url: string,
+    config?: HttpClientRequestConfig,
+  ): Promise<TResponse> {
+    return request<TResponse>({
+      ...config,
+      url,
+      method: 'delete',
+    });
+  },
 };
 
 export { ensureWebCsrfSynced };

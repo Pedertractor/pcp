@@ -149,6 +149,8 @@ model Machine {
   costCenter String? @map("cost_center")
   positionX  Float?  @map("position_x")
   positionY  Float?  @map("position_y")
+  positionWidth  Float? @map("position_width")
+  positionHeight Float? @map("position_height")
   lineId     String  @map("line_id")
 
   line             Line              @relation(fields: [lineId], references: [id], onDelete: Cascade)

@@ -7,6 +7,7 @@ import {
   ImageOff,
   ImageUp,
   Loader2Icon,
+  MapPinOff,
   Package,
   Paintbrush,
   Pencil,
@@ -15,12 +16,14 @@ import {
   Settings,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { BlockCostCentersDialog } from '@/components/blocks/block-cost-centers-dialog';
 import { BlockMapSettingsDialog } from '@/components/blocks/block-map-settings-dialog';
+import { BlockPlanMachineEditor } from '@/components/blocks/block-plan-machine-editor';
 import { PlanZoomViewport } from '@/components/blocks/plan-zoom-viewport';
+import { isMachineOnMap } from '@/lib/machine-map';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,6 +34,7 @@ import {
 import { useBlockPlanImage } from '@/hooks/blocks/use-block-plan-image';
 import { blockDetailQueryKey, getBlock } from '@/services/blocks/block.service';
 import { BLOCK_SECTOR_LABELS, type BlockDetail } from '@/types/block';
+import { cn } from '@/lib/utils';
 
 const BLOCKS_PATH = '/controle-produtivo';
 
@@ -80,10 +84,29 @@ function TodayBadge() {
 
 const piecesFormatter = new Intl.NumberFormat('pt-BR');
 
-function BlockMachinesColumn({ block }: { block: BlockDetail }) {
-  const machines = block.lines.flatMap((line) =>
-    line.machines.map((machine) => ({ ...machine, lineCode: line.code })),
-  );
+function BlockMachinesColumn({
+  block,
+  selectedMachineId,
+  onSelectMachine,
+}: {
+  block: BlockDetail;
+  selectedMachineId: string | null;
+  onSelectMachine: (machineId: string | null) => void;
+}) {
+  const machines = useMemo(() => {
+    const byId = new Map<
+      string,
+      BlockDetail['lines'][number]['machines'][number] & { lineCode: string }
+    >();
+    for (const line of block.lines) {
+      for (const machine of line.machines) {
+        if (!byId.has(machine.id)) {
+          byId.set(machine.id, { ...machine, lineCode: line.code });
+        }
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.code.localeCompare(b.code));
+  }, [block.lines]);
 
   return (
     <aside className="flex min-h-0 min-w-0 shrink-0 flex-col gap-3 lg:h-full">
@@ -102,25 +125,48 @@ function BlockMachinesColumn({ block }: { block: BlockDetail }) {
           </p>
         ) : (
           <ul className="-mr-2 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pt-3 pr-2">
-            {machines.map((machine) => (
-              <li
-                key={machine.id}
-                className="flex items-center justify-between gap-2 rounded-lg bg-muted px-3 py-2 text-sm"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{machine.code}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    Linha {machine.lineCode}
-                  </p>
-                </div>
-                <span
-                  className="shrink-0 text-xs font-semibold tabular-nums"
-                  title="Peças esperadas hoje"
-                >
-                  {piecesFormatter.format(machine.expectedPiecesToday)} pç
-                </span>
-              </li>
-            ))}
+            {machines.map((machine) => {
+              const onMap = isMachineOnMap(machine);
+              const selected = machine.id === selectedMachineId;
+              return (
+                <li key={machine.id}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onSelectMachine(selected ? null : machine.id)
+                    }
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                      selected
+                        ? 'bg-primary/15 ring-1 ring-primary'
+                        : 'bg-muted hover:bg-muted/80',
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 truncate font-medium">
+                        {!onMap ? (
+                          <MapPinOff
+                            className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+                            aria-hidden
+                          />
+                        ) : null}
+                        <span className="truncate">{machine.code}</span>
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        Linha {machine.lineCode}
+                        {!onMap ? ' · sem posição no mapa' : ''}
+                      </p>
+                    </div>
+                    <span
+                      className="shrink-0 text-xs font-semibold tabular-nums"
+                      title="Peças esperadas hoje"
+                    >
+                      {piecesFormatter.format(machine.expectedPiecesToday)} pç
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -141,9 +187,13 @@ function BlockMachinesColumn({ block }: { block: BlockDetail }) {
 function BlockPlanView({
   block,
   onConfigure,
+  selectedMachineId,
+  onSelectMachine,
 }: {
   block: BlockDetail;
   onConfigure: () => void;
+  selectedMachineId: string | null;
+  onSelectMachine: (machineId: string | null) => void;
 }) {
   const planImage = useBlockPlanImage(block.blockPlanImage);
 
@@ -170,11 +220,11 @@ function BlockPlanView({
   if (planImage.src) {
     return (
       <PlanZoomViewport>
-        <img
-          src={planImage.src}
-          alt={`Planta do ${block.name}`}
-          className="size-full object-contain"
-          draggable={false}
+        <BlockPlanMachineEditor
+          block={block}
+          imageSrc={planImage.src}
+          selectedMachineId={selectedMachineId}
+          onSelectMachine={onSelectMachine}
         />
       </PlanZoomViewport>
     );
@@ -198,6 +248,9 @@ export function BlockDetailPage() {
   const { blockId = '' } = useParams();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [costCentersOpen, setCostCentersOpen] = useState(false);
+  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(
+    null,
+  );
 
   const blockQuery = useQuery({
     queryKey: blockDetailQueryKey(blockId),
@@ -360,12 +413,18 @@ export function BlockDetailPage() {
           <BlockPlanView
             block={block}
             onConfigure={() => setSettingsOpen(true)}
+            selectedMachineId={selectedMachineId}
+            onSelectMachine={setSelectedMachineId}
           />
         </div>
         <TodayBadge />
       </main>
 
-      <BlockMachinesColumn block={block} />
+      <BlockMachinesColumn
+        block={block}
+        selectedMachineId={selectedMachineId}
+        onSelectMachine={setSelectedMachineId}
+      />
 
       <BlockMapSettingsDialog
         block={block}

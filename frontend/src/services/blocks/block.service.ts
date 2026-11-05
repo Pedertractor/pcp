@@ -1,6 +1,7 @@
 import { httpClient } from '@/lib/http-client';
 import type {
   BlockDetail,
+  BlockMachine,
   BlockSummary,
   CreateBlockInput,
 } from '@/types/block';
@@ -46,6 +47,31 @@ export async function updateBlockCostCenters(
   return httpClient.put<BlockDetail, { sectorIds: string[] }>(
     `/blocks/${blockId}/cost-centers`,
     { sectorIds },
+  );
+}
+
+export async function updateMachineMapPosition(
+  blockId: string,
+  machineId: string,
+  position: {
+    positionX: number;
+    positionY: number;
+    positionWidth: number;
+    positionHeight: number;
+  },
+): Promise<BlockMachine> {
+  return httpClient.patch<BlockMachine, typeof position>(
+    `/blocks/${blockId}/machines/${machineId}/map-position`,
+    position,
+  );
+}
+
+export async function removeMachineMapPosition(
+  blockId: string,
+  machineId: string,
+): Promise<BlockMachine> {
+  return httpClient.delete<BlockMachine>(
+    `/blocks/${blockId}/machines/${machineId}/map-position`,
   );
 }
 
