@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  CalendarDays,
   ClipboardList,
   Cog,
   ImageOff,
@@ -13,7 +14,7 @@ import {
   Settings,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { BlockCostCentersDialog } from '@/components/blocks/block-cost-centers-dialog';
@@ -46,6 +47,32 @@ function BlockInfoItem({ icon: Icon, label, value }: BlockInfoItemProps) {
         <dd className="truncate font-medium">{value}</dd>
       </div>
     </div>
+  );
+}
+
+const todayFormatter = new Intl.DateTimeFormat('pt-BR', {
+  weekday: 'long',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+});
+
+function TodayBadge() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <time
+      dateTime={now.toLocaleDateString('sv-SE')}
+      className="absolute right-3 bottom-3 z-10 inline-flex items-center gap-2 rounded-lg border-2 border-primary bg-card px-3 py-1.5 text-sm font-semibold capitalize sm:right-4 sm:bottom-4"
+    >
+      <CalendarDays className="size-4 text-brand" aria-hidden />
+      {todayFormatter.format(now)}
+    </time>
   );
 }
 
@@ -261,12 +288,13 @@ export function BlockDetailPage() {
             <TooltipContent>Configurar mapa</TooltipContent>
           </Tooltip>
         </div>
-        <div className="min-h-0 flex-1 pt-10">
+        <div className="min-h-0 flex-1 pt-10 pb-12">
           <BlockPlanView
             block={block}
             onConfigure={() => setSettingsOpen(true)}
           />
         </div>
+        <TodayBadge />
       </main>
 
       <BlockMapSettingsDialog
