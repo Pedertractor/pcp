@@ -1,3 +1,4 @@
+import { ChevronRight, Factory } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { useWebSession } from '@/hooks/auth/use-web-session';
@@ -20,6 +21,22 @@ export function HomePage() {
             : 'Carregando sessão…'}
         </p>
       </div>
+
+      <Link
+        to="/controle-produtivo"
+        className="group flex items-center gap-4 rounded-xl border bg-card p-5 transition-colors hover:border-brand"
+      >
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-brand-muted text-brand">
+          <Factory className="size-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-medium">Controle Produtivo por bloco</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Blocos, centros de custo e acompanhamento das OFs.
+          </p>
+        </div>
+        <ChevronRight className="size-5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </Link>
 
       <section className="rounded-xl border bg-card p-5">
         <h2 className="text-base font-medium">Plataforma PCP</h2>

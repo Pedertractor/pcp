@@ -231,6 +231,46 @@ O model `Machine` armazenará:
 - Coordenada vertical (`positionY`).
 - Relacionamento com a linha produtiva.
 
+### 5.1. Mapa do bloco (planta)
+
+O mapa de cada bloco é a imagem da sua planta (`BlockPlanImage`).
+
+- A planta é enviada dentro do bloco, pelo ícone de configuração no canto superior direito da tela (**Configurar mapa**).
+- Formatos aceitos: PNG, JPG ou WEBP, até 15 MB.
+- Cada bloco possui no máximo uma planta. Enviar uma nova imagem substitui a anterior, e o arquivo antigo é removido.
+- A planta é apenas o fundo do mapa. As máquinas são desenhadas por cima dela, nas coordenadas `positionX` e `positionY`.
+
+### 5.2. Cadastro automático de linhas e máquinas
+
+Linhas e máquinas **não serão cadastradas manualmente**. Elas serão criadas pelo sistema a partir das consultas de OFs.
+
+Fluxo previsto:
+
+1. A consulta de planejamento (seção 2) retorna as OFs com os campos `linha` e `maquina`.
+2. O bloco da OF é identificado pelo centro de custo, comparado com os `CostCenter` cadastrados nos blocos.
+3. Se a linha informada ainda não existir no bloco, o sistema cria a `Line` (código único por bloco).
+4. Se a máquina informada ainda não existir, o sistema cria a `Machine` ligada a essa linha, com o código recebido e o centro de custo da OF.
+5. A máquina nasce **sem posição**: `positionX` e `positionY` ficam nulos.
+6. A consulta de execução (seção 4) também pode trazer máquinas pelo campo `MAQUINA`. Se aparecer uma máquina ainda não cadastrada, ela é criada da mesma forma, sem posição.
+
+Regras:
+
+- O código da máquina é único. Uma máquina já existente nunca é duplicada: apenas é reutilizada.
+- A criação deve ser idempotente: rodar a mesma sincronização novamente não gera linhas nem máquinas repetidas.
+- Uma máquina não é apagada por deixar de aparecer nas consultas.
+- Uma OF sem centro de custo vinculado a algum bloco não cria linha nem máquina. Ela deve ficar registrada para análise.
+
+### 5.3. Posicionamento das máquinas no mapa
+
+O posicionamento acontece **depois** que as máquinas forem criadas pela sincronização.
+
+1. No modo de configuração do mapa, o sistema lista as máquinas do bloco **ainda não posicionadas** (sem `positionX`/`positionY`).
+2. O usuário arrasta cada máquina para o local correspondente na planta.
+3. A posição é salva como percentual da imagem (0 a 100), para continuar correta em qualquer tamanho de tela e mesmo se a planta for substituída por uma versão com outra resolução.
+4. Máquinas sem posição continuam recebendo OFs e processos normalmente. Elas apenas não aparecem no mapa até serem posicionadas.
+
+Os detalhes da relação entre máquinas e mapa serão definidos na próxima etapa.
+
 ### Atualização visual
 
 Quando um processo em andamento for identificado:
@@ -294,6 +334,16 @@ A identidade de uma execução deverá ser definida conforme as garantias fornec
 
 Armazena o cadastro e a localização das máquinas no mapa.
 
+É criada automaticamente pela sincronização das OFs, sem posição. A posição (`positionX`, `positionY`) é definida depois, manualmente, no mapa do bloco (seção 5.3).
+
+### Line
+
+Agrupa as máquinas de um bloco. É criada automaticamente pela sincronização a partir do campo `linha` das OFs, com código único dentro do bloco.
+
+### BlockPlanImage
+
+Armazena a imagem da planta do bloco, usada como fundo do mapa. Cada bloco possui no máximo uma.
+
 ### PaintColor
 
 Armazena o catálogo de cores e marcas das tintas, permitindo associar as informações recebidas das consultas aos registros internos.
@@ -308,17 +358,18 @@ Armazena o catálogo de cores e marcas das tintas, permitindo associar as inform
 2. Receber as OFs previstas para hoje e atrasadas.
 3. Validar os dados.
 4. Verificar os registros existentes.
-5. Criar as novas OFs.
-6. Atualizar os registros existentes.
-7. Preservar as classificações originais de `STATUS_DATA`.
-8. Registrar o resultado da sincronização.
+5. Identificar o bloco pelo centro de custo e criar as linhas e máquinas ainda não cadastradas, sem posição no mapa (seção 5.2).
+6. Criar as novas OFs.
+7. Atualizar os registros existentes.
+8. Preservar as classificações originais de `STATUS_DATA`.
+9. Registrar o resultado da sincronização.
 
 ### Rotina de 5 em 5 minutos
 
 1. Identificar os centros de custos cadastrados nos blocos.
 2. Executar a consulta de processos para a data de referência.
 3. Identificar os processos iniciados e concluídos.
-4. Localizar ou atualizar os registros de execução.
+4. Localizar ou atualizar os registros de execução, criando sem posição as máquinas de `MAQUINA` ainda não cadastradas.
 5. Manter os processos ainda abertos.
 6. Atualizar o status das OFs conforme as regras definidas.
 7. Atualizar as informações de produção nas máquinas.

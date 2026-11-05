@@ -347,6 +347,18 @@ export const httpClient = {
       data: body,
     });
   },
+  put<TResponse, TBody = unknown>(
+    url: string,
+    body?: TBody,
+    config?: HttpClientRequestConfig,
+  ): Promise<TResponse> {
+    return request<TResponse>({
+      ...config,
+      url,
+      method: 'put',
+      data: body,
+    });
+  },
 };
 
 export { ensureWebCsrfSynced };

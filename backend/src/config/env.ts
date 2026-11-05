@@ -18,6 +18,7 @@ const envSchema = z.object({
   NAME_APPLICATION: z.string().min(1),
   KEY: z.string().min(1),
   COOKIE_SECURE: z.enum(['true', 'false']).optional(),
+  UPLOADS_DIR: z.string().default('uploads'),
 });
 
 const parsed = envSchema.safeParse(process.env);

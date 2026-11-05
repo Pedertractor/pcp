@@ -1,4 +1,4 @@
-import { House, Users } from 'lucide-react';
+import { Factory, House, Users } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 import logoSystem from '@/public/logo-system.png';
@@ -68,6 +68,19 @@ export function AppSidebar() {
                   <Link to="/">
                     <House />
                     <span>Início</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  size="sm"
+                  tooltip="Controle Produtivo"
+                  isActive={pathname.startsWith('/controle-produtivo')}
+                >
+                  <Link to="/controle-produtivo">
+                    <Factory />
+                    <span>Controle Produtivo</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

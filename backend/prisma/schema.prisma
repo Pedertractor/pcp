@@ -59,3 +59,129 @@ model RefreshToken {
   @@index([userId])
   @@map("refresh_tokens")
 }
+
+enum BlockSector {
+  PAINT
+
+  @@map("block_sector")
+}
+
+enum ProductionOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+
+  @@map("production_order_status")
+}
+
+model BlockPlanImage {
+  id           String   @id @default(uuid())
+  name         String
+  originalName String?  @map("original_name")
+  url          String
+  mimeType     String?  @map("mime_type")
+  size         Int?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  block Block?
+
+  @@map("block_plan_images")
+}
+
+model Block {
+  id               String      @id @default(uuid())
+  name             String      @unique
+  sector           BlockSector @default(PAINT)
+  blockPlanImageId String?     @unique @map("block_plan_image_id")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  blockPlanImage   BlockPlanImage?   @relation(fields: [blockPlanImageId], references: [id], onDelete: SetNull)
+  costCenters      CostCenter[]
+  lines            Line[]
+  productionOrders ProductionOrder[]
+
+  @@map("blocks")
+}
+
+model CostCenter {
+  id              String  @id @default(uuid())
+  costCenter      String  @unique @map("cost_center")
+  sectorName      String  @map("sector_name")
+  sectorIdBaseApi String  @unique @map("sector_id_base_api")
+  blockId         String  @map("block_id")
+
+  block Block @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([blockId])
+  @@map("cost_centers")
+}
+
+model Line {
+  id      String @id @default(uuid())
+  code    String
+  blockId String @map("block_id")
+
+  block    Block     @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  machines Machine[]
+
+  @@unique([blockId, code])
+  @@map("lines")
+}
+
+model PaintColor {
+  id          String  @id @default(uuid())
+  name        String
+  baseColorId String? @map("base_color_id")
+  brand       String?
+
+  productionOrders ProductionOrder[]
+
+  @@unique([name, brand])
+  @@map("paint_colors")
+}
+
+model Machine {
+  id         String  @id @default(uuid())
+  code       String  @unique
+  costCenter String? @map("cost_center")
+  positionX  Float?  @map("position_x")
+  positionY  Float?  @map("position_y")
+  lineId     String  @map("line_id")
+
+  line             Line              @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  productionOrders ProductionOrder[]
+
+  @@index([lineId])
+  @@map("machines")
+}
+
+model ProductionOrder {
+  id          String                @id @default(uuid())
+  ofNumber    String                @unique @map("of_number")
+  partCode    String                @map("part_code")
+  blockId     String                @map("block_id")
+  line        String
+  colorId     String?               @map("color_id")
+  area        String?
+  direction   String?
+  operation   String?
+  costCenter  String?               @map("cost_center")
+  statusDate  String?               @map("status_date")
+  machineId   String?               @map("machine_id")
+  targetDate  DateTime              @map("target_date")
+  status      ProductionOrderStatus @default(PENDING)
+  completedAt DateTime?             @map("completed_at")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  block   Block       @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  color   PaintColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
+  machine Machine?    @relation(fields: [machineId], references: [id], onDelete: SetNull)
+
+  @@index([blockId])
+  @@index([status])
+  @@map("production_orders")
+}

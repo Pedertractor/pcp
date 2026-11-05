@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import csrfProtection from '@fastify/csrf-protection';
+import multipart from '@fastify/multipart';
 import {
   validatorCompiler,
   serializerCompiler,
@@ -16,6 +17,7 @@ import { healthRoutes } from './routes/health.routes.js';
 import mainRoutes from './routes/main.routes.js';
 import { errorHandler } from './lib/errorHandler.js';
 import { env } from './config/env.js';
+import { BLOCK_PLAN_MAX_BYTES } from './lib/block-plan-storage.js';
 
 const app = Fastify({
   logger: true,
@@ -39,6 +41,13 @@ app.register(csrfProtection, {
     path: '/',
     sameSite: 'lax',
     secure: env.cookieSecure,
+  },
+});
+
+app.register(multipart, {
+  limits: {
+    files: 1,
+    fileSize: BLOCK_PLAN_MAX_BYTES,
   },
 });
 

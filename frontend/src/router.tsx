@@ -6,6 +6,8 @@ import { SessionExpiredListener } from '@/components/auth/session-expired-listen
 import { Toaster } from '@/components/ui/sonner';
 import { AppShell } from '@/layouts/app-shell';
 import { LoginPage } from '@/pages/auth/login-page';
+import { BlockDetailPage } from '@/pages/blocks/block-detail-page';
+import { BlocksPage } from '@/pages/blocks/blocks-page';
 import { HomePage } from '@/pages/home-page';
 import { UsuariosPage } from '@/pages/usuarios-page';
 
@@ -16,8 +18,13 @@ export function AppRouter() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireAuth />}>
+          <Route
+            path="/controle-produtivo/:blockId"
+            element={<BlockDetailPage />}
+          />
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />
+            <Route path="/controle-produtivo" element={<BlocksPage />} />
             <Route element={<RequireUserManagement />}>
               <Route path="/usuarios" element={<UsuariosPage />} />
             </Route>
