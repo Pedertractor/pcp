@@ -1,0 +1,18 @@
+name: pcp
+services:
+  pcp-database:
+    image: postgres:17-alpine
+    container_name: pcp-database
+    ports:
+      - "${PORT_DATABASE}:5432"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data-pcp:/var/lib/postgresql/data
+
+volumes:
+  postgres-data-pcp:
