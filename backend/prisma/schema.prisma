@@ -171,6 +171,7 @@ model ProductionOrder {
   costCenter  String?               @map("cost_center")
   statusDate  String?               @map("status_date")
   machineId   String?               @map("machine_id")
+  quantity    Int                   @default(0)
   targetDate  DateTime              @map("target_date")
   status      ProductionOrderStatus @default(PENDING)
   completedAt DateTime?             @map("completed_at")

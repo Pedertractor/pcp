@@ -49,6 +49,7 @@ export type BlockMachine = {
   costCenter: string | null;
   positionX: number | null;
   positionY: number | null;
+  expectedPiecesToday: number;
 };
 
 export type BlockLine = {
@@ -60,6 +61,7 @@ export type BlockLine = {
 export type BlockDetail = BlockSummary & {
   blockPlanImage: BlockPlanImage | null;
   lines: BlockLine[];
+  expectedPiecesToday: number;
 };
 
 export type CreateBlockInput = {

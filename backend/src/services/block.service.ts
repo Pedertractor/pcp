@@ -39,6 +39,14 @@ type BlockWithSummary = {
   _count: { lines: number; productionOrders: number };
 };
 
+function todayRange(): { start: Date; end: Date } {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
 function toBlockSummary(block: BlockWithSummary): BlockSummary {
   return {
     id: block.id,
@@ -109,6 +117,20 @@ export class BlockService {
       throw new AppError('Bloco não encontrado', 404);
     }
 
+    const { start, end } = todayRange();
+    const piecesByMachine = await this.prisma.productionOrder.groupBy({
+      by: ['machineId'],
+      where: { blockId: id, targetDate: { gte: start, lt: end } },
+      _sum: { quantity: true },
+    });
+    const piecesMap = new Map(
+      piecesByMachine.map((item) => [item.machineId, item._sum.quantity ?? 0]),
+    );
+    const expectedPiecesToday = piecesByMachine.reduce(
+      (total, item) => total + (item._sum.quantity ?? 0),
+      0,
+    );
+
     return {
       ...toBlockSummary(block),
       blockPlanImage: block.blockPlanImage
@@ -117,11 +139,15 @@ export class BlockService {
             updatedAt: block.blockPlanImage.updatedAt.toISOString(),
           }
         : null,
-      lines: block.lines.map(({ id, code, machines }) => ({
-        id,
+      lines: block.lines.map(({ id: lineId, code, machines }) => ({
+        id: lineId,
         code,
-        machines,
+        machines: machines.map((machine) => ({
+          ...machine,
+          expectedPiecesToday: piecesMap.get(machine.id) ?? 0,
+        })),
       })),
+      expectedPiecesToday,
     };
   }
 

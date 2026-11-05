@@ -40,6 +40,7 @@ const machineSchema = z.object({
   costCenter: z.string().nullable(),
   positionX: z.number().nullable(),
   positionY: z.number().nullable(),
+  expectedPiecesToday: z.number(),
 });
 
 const lineSchema = z.object({
@@ -51,6 +52,7 @@ const lineSchema = z.object({
 export const blockDetailSchema = blockSummarySchema.extend({
   blockPlanImage: blockPlanImageSchema.nullable(),
   lines: z.array(lineSchema),
+  expectedPiecesToday: z.number(),
 });
 
 export type BlockDetail = z.infer<typeof blockDetailSchema>;

@@ -7,6 +7,7 @@ import {
   ImageOff,
   ImageUp,
   Loader2Icon,
+  Package,
   Paintbrush,
   Pencil,
   Receipt,
@@ -19,6 +20,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { BlockCostCentersDialog } from '@/components/blocks/block-cost-centers-dialog';
 import { BlockMapSettingsDialog } from '@/components/blocks/block-map-settings-dialog';
+import { PlanZoomViewport } from '@/components/blocks/plan-zoom-viewport';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -76,6 +78,66 @@ function TodayBadge() {
   );
 }
 
+const piecesFormatter = new Intl.NumberFormat('pt-BR');
+
+function BlockMachinesColumn({ block }: { block: BlockDetail }) {
+  const machines = block.lines.flatMap((line) =>
+    line.machines.map((machine) => ({ ...machine, lineCode: line.code })),
+  );
+
+  return (
+    <aside className="flex min-h-0 min-w-0 shrink-0 flex-col gap-3 lg:h-full">
+      <section className="flex min-h-64 flex-1 flex-col rounded-2xl border border-border/60 bg-card p-4 lg:min-h-0">
+        <h2 className="flex items-center justify-between gap-2 border-b border-border/60 pb-3 text-sm font-medium">
+          <span className="flex items-center gap-2">
+            <Cog className="size-4 text-brand" />
+            Máquinas
+          </span>
+          <span className="text-muted-foreground">{machines.length}</span>
+        </h2>
+
+        {machines.length === 0 ? (
+          <p className="pt-3 text-sm text-muted-foreground">
+            Nenhuma máquina ainda. Elas são criadas pela sincronização das OFs.
+          </p>
+        ) : (
+          <ul className="-mr-2 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pt-3 pr-2">
+            {machines.map((machine) => (
+              <li
+                key={machine.id}
+                className="flex items-center justify-between gap-2 rounded-lg bg-muted px-3 py-2 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{machine.code}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    Linha {machine.lineCode}
+                  </p>
+                </div>
+                <span
+                  className="shrink-0 text-xs font-semibold tabular-nums"
+                  title="Peças esperadas hoje"
+                >
+                  {piecesFormatter.format(machine.expectedPiecesToday)} pç
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="shrink-0 rounded-2xl border-2 border-primary bg-card p-4">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Package className="size-4 text-brand" aria-hidden />
+          Peças esperadas hoje
+        </p>
+        <p className="mt-2 text-3xl font-bold tracking-tight tabular-nums">
+          {piecesFormatter.format(block.expectedPiecesToday)}
+        </p>
+      </section>
+    </aside>
+  );
+}
+
 function BlockPlanView({
   block,
   onConfigure,
@@ -105,16 +167,22 @@ function BlockPlanView({
     );
   }
 
-  return (
-    <div className="flex h-full min-h-0 items-center justify-center">
-      {planImage.src ? (
+  if (planImage.src) {
+    return (
+      <PlanZoomViewport>
         <img
           src={planImage.src}
           alt={`Planta do ${block.name}`}
-          className="h-full max-h-full w-full object-contain"
+          className="size-full object-contain"
           draggable={false}
         />
-      ) : planImage.isError ? (
+      </PlanZoomViewport>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center">
+      {planImage.isError ? (
         <p className="text-sm text-destructive">
           Não foi possível carregar a planta.
         </p>
@@ -167,7 +235,7 @@ export function BlockDetailPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-background p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+    <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-background p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)_minmax(13rem,calc(100vw/6))] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
       <aside className="flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl border border-border/60 bg-card p-4 sm:p-5 lg:h-full">
         <header className="flex items-start gap-3 border-b border-border/60 pb-4">
           <Button
@@ -296,6 +364,8 @@ export function BlockDetailPage() {
         </div>
         <TodayBadge />
       </main>
+
+      <BlockMachinesColumn block={block} />
 
       <BlockMapSettingsDialog
         block={block}

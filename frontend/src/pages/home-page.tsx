@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Boxes, CalendarRange, Clock } from 'lucide-react';
+import { ArrowRight, Boxes, Clock, Lock } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useWebSession } from '@/hooks/auth/use-web-session';
 import { roleLabel, unitLabel } from '@/lib/user-labels';
 import { capitalize, cn } from '@/lib/utils';
+import pmpImage from '@/public/home/pmp.png';
 import productionControlImage from '@/public/home/production-control.png';
 import {
   blocksListQueryKey,
@@ -16,24 +17,18 @@ type HoveredSide = 'control' | 'pmp' | null;
 
 const PMP_CLIP: Record<Exclude<HoveredSide, null> | 'idle', string> = {
   idle: 'lg:[clip-path:polygon(64%_0,100%_0,100%_100%,40%_100%)]',
-  control: 'lg:[clip-path:polygon(74%_0,100%_0,100%_100%,52%_100%)]',
+  control: 'lg:[clip-path:polygon(70%_0,100%_0,100%_100%,50%_100%)]',
   pmp: 'lg:[clip-path:polygon(54%_0,100%_0,100%_100%,28%_100%)]',
 };
 
-function DotGrid({ className }: { className?: string }) {
-  return (
-    <div
-      aria-hidden
-      className={cn(
-        'pointer-events-none absolute grid grid-cols-6 gap-2.5',
-        className,
-      )}
-    >
-      {Array.from({ length: 24 }, (_, index) => (
-        <span key={index} className="size-1 rounded-full bg-current" />
-      ))}
-    </div>
-  );
+const contentClassName =
+  'relative flex h-full w-full flex-col gap-6 p-8 transition-opacity duration-500 sm:p-12 lg:pt-[clamp(4rem,14vh,9rem)] lg:pb-12';
+
+function sideOpacity(hovered: HoveredSide, side: Exclude<HoveredSide, null>) {
+  if (hovered === side) {
+    return 'lg:opacity-100';
+  }
+  return hovered === null ? 'lg:opacity-85' : 'lg:opacity-50';
 }
 
 function PmpLines() {
@@ -85,7 +80,6 @@ export function HomePage() {
         onBlur={() => setHovered(null)}
         className="group/control relative flex min-h-[26rem] flex-1 overflow-hidden bg-white text-neutral-900 outline-none dark:bg-[#ececec] lg:absolute lg:inset-0 lg:min-h-0"
       >
-        <DotGrid className="top-8 left-8 text-primary/50" />
         <span
           aria-hidden
           className="pointer-events-none absolute bottom-[18%] left-[38%] hidden size-3 rounded-full bg-primary lg:block"
@@ -97,11 +91,12 @@ export function HomePage() {
 
         <div
           className={cn(
-            'relative flex h-full w-full flex-col justify-center gap-6 p-8 transition-opacity duration-500 sm:p-12 lg:w-[46%] lg:py-12 lg:pr-4 lg:pl-[6%]',
-            hovered === 'pmp' && 'lg:opacity-60',
+            contentClassName,
+            'lg:w-[46%] lg:pr-4 lg:pl-[6%]',
+            sideOpacity(hovered, 'control'),
           )}
         >
-          <div className="text-sm text-neutral-500">
+          <div className="h-10 text-sm text-neutral-500">
             {firstName ? `Olá, ${firstName}` : 'Olá'}
             {user ? (
               <span className="block text-xs">
@@ -124,10 +119,6 @@ export function HomePage() {
             </h2>
             <p className="text-3xl font-bold tracking-tight sm:text-4xl">
               por bloco
-            </p>
-            <p className="mt-3 max-w-sm text-sm text-neutral-500">
-              Acompanhe as OFs do dia, os atrasos e as máquinas de cada bloco no
-              mapa produtivo.
             </p>
           </div>
 
@@ -160,41 +151,48 @@ export function HomePage() {
         )}
       >
         <PmpLines />
-        <DotGrid className="right-8 bottom-8 text-white/25" />
 
         <div
           className={cn(
-            'relative flex h-full w-full flex-col items-start justify-center gap-6 p-8 transition-opacity duration-500 sm:p-12 lg:ml-auto lg:w-[34%] lg:py-12 lg:pr-[6%] lg:pl-0',
-            hovered === 'control' && 'lg:opacity-60',
+            contentClassName,
+            'items-start lg:ml-auto lg:w-[32%] lg:pr-[5%] lg:pl-0',
+            sideOpacity(hovered, 'pmp'),
           )}
         >
-          <span className="inline-flex items-center gap-1.5 rounded-full border-2 border-primary px-3 py-1 text-xs font-semibold">
-            <Clock className="size-3.5 text-primary" aria-hidden />
-            Em breve
-          </span>
-
-          <div className="flex size-24 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/15 transition-transform duration-500 group-hover/pmp:scale-110 sm:size-28">
-            <CalendarRange
-              className="size-11 text-primary sm:size-12"
-              strokeWidth={1.5}
-            />
+          <div className="flex h-10 items-start">
+            <span className="inline-flex items-center gap-1.5 rounded-full border-2 border-primary px-3 py-1 text-xs font-semibold">
+              <Clock className="size-3.5 text-primary" aria-hidden />
+              Em breve
+            </span>
           </div>
+
+          <img
+            src={pmpImage}
+            alt=""
+            aria-hidden
+            className="h-28 w-fit object-contain transition-transform duration-500 group-hover/pmp:scale-110 sm:h-36 lg:h-[clamp(7rem,22vh,12rem)]"
+            draggable={false}
+          />
 
           <div>
-            <h2 className="text-3xl font-light tracking-tight sm:text-4xl">
-              PMP
-            </h2>
-            <p className="text-2xl font-bold tracking-tight sm:text-3xl">
+          
+            <p className="text-3xl font-bold tracking-tight sm:text-4xl">
               Plano Mestre de Produção
-            </p>
-            <p className="mt-3 max-w-xs text-sm text-white/60">
-              Planejamento da demanda e da capacidade dos blocos.
             </p>
           </div>
 
-          <div className="w-full max-w-xs rounded-xl border border-dashed border-white/25 p-4 text-sm text-white/70 transition-colors duration-300 group-hover/pmp:border-primary/70">
-            O módulo está em definição e será liberado nas próximas etapas.
-          </div>
+          <button
+            type="button"
+            disabled
+            title="Disponível em breve"
+            className="inline-flex h-12 cursor-not-allowed items-center gap-3 rounded-full bg-white/10 pr-6 pl-2 text-sm font-medium text-white/60 ring-1 ring-white/15"
+          >
+            <span className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white/70">
+              <Lock className="size-4" />
+            </span>
+            Acessar PMP
+            <ArrowRight className="size-4" />
+          </button>
         </div>
       </div>
     </div>

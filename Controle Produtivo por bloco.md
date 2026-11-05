@@ -35,7 +35,7 @@ Os registros recebidos deverão ser cadastrados ou atualizados no banco de dados
 | `DESCRICAO` | Descrição do produto |
 | `GRUPO` | Grupo do produto |
 | `SA` | Campo SA da consulta |
-| `QTE` | Quantidade prevista |
+| `QTE` | Quantidade prevista (gravada em `ProductionOrder.quantity`; soma das OFs do dia = peças esperadas hoje no bloco e por máquina) |
 | `CCUSTO` | Centro de custo |
 | `DTINI_PROC` | Data/hora de início do processo |
 | `DTFIM_PROC` | Data/hora de finalização do processo |
