@@ -35,7 +35,7 @@ export function AppSidebar() {
               className="hover:bg-transparent"
             >
               <Link to="/">
-                <div className="flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-brand-muted">
+                <div className="flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-brand-muted dark:bg-[#e8f6df]">
                   <img
                     src={logoSystem}
                     alt=""

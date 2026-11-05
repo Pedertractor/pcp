@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 
 import { AppSidebar } from '@/components/app-sidebar';
+import { ThemeToggle } from '@/components/theme-toggle';
 import {
   SidebarInset,
   SidebarProvider,
@@ -15,6 +16,9 @@ export function AppShell() {
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <p className="text-sm font-medium text-brand">PCP</p>
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </header>
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 md:p-6">
           <Outlet />

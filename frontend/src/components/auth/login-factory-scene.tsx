@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import logoLoginDark from '@/public/logo-login-dark.png';
 import logoLogin from '@/public/logo-login.png';
 import {
   FactoryProcessGlow,
@@ -84,7 +85,14 @@ export function LoginFactoryScene() {
       <img
         src={logoLogin}
         alt="Ilustração da fábrica PCP"
-        className="block h-auto w-full select-none"
+        className="block h-auto w-full select-none dark:hidden"
+        draggable={false}
+      />
+      <img
+        src={logoLoginDark}
+        alt=""
+        aria-hidden
+        className="hidden h-auto w-full select-none dark:block"
         draggable={false}
       />
       <FactoryProcessGlow

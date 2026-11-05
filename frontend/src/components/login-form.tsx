@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 import { LoginFactoryScene } from '@/components/auth/login-factory-scene';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -73,14 +74,17 @@ export function LoginForm({
   const greeting = getGreeting();
 
   return (
-    <div className="relative grid min-h-dvh lg:grid-cols-2">
-      <p className="absolute top-5 right-6 z-10 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">{greeting}</span>
-        <span className="mx-2" aria-hidden>
-          |
-        </span>
-        Powered by automation team
-      </p>
+    <div className="relative grid min-h-dvh bg-background lg:grid-cols-2">
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{greeting}</span>
+          <span className="mx-2" aria-hidden>
+            |
+          </span>
+          Powered by automation team
+        </p>
+        <ThemeToggle />
+      </div>
       
       <p className="pointer-events-none absolute inset-x-0 bottom-5 z-10 text-center text-sm text-muted-foreground">
       Planejamento e Controle da Produção - Pedertractor & TractorComponents
@@ -253,7 +257,7 @@ export function LoginForm({
         </form>
       </div>
 
-      <div className="flex min-h-[42vh] items-center justify-center bg-white lg:min-h-dvh">
+      <div className="flex min-h-[42vh] items-center justify-center bg-background lg:min-h-dvh">
         <LoginFactoryScene />
       </div>
     </div>

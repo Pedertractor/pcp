@@ -83,6 +83,48 @@
   --sidebar-accent-foreground: #1c3314;
   --sidebar-border: var(--palette-300);
   --sidebar-ring: var(--palette-900);
+  color-scheme: light;
+}
+
+.dark {
+  --palette-900: #7dbe5c;
+  --palette-700: #8fce73;
+  --palette-500: #6fb84f;
+  --palette-300: #2e2e2e;
+  --palette-100: #1a1a1a;
+
+  --brand: #7dbe5c;
+  --brand-soft: #8fce73;
+  --brand-muted: #1a1a1a;
+  --brand-foreground: #111111;
+
+  --background: #000000;
+  --foreground: #f4f4f5;
+  --card: #121212;
+  --card-foreground: #f4f4f5;
+  --popover: #161616;
+  --popover-foreground: #f4f4f5;
+  --primary: #7dbe5c;
+  --primary-foreground: #111111;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #f4f4f5;
+  --muted: #1a1a1a;
+  --muted-foreground: #a1a1aa;
+  --accent: #222222;
+  --accent-foreground: #f4f4f5;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: #2e2e2e;
+  --input: #2e2e2e;
+  --ring: #7dbe5c;
+  --sidebar: #000000;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #7dbe5c;
+  --sidebar-primary-foreground: #111111;
+  --sidebar-accent: #1a1a1a;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: #2a2a2a;
+  --sidebar-ring: #7dbe5c;
+  color-scheme: dark;
 }
 
 @keyframes factory-process-flicker {
