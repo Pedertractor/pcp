@@ -105,7 +105,7 @@ const todayFormatter = new Intl.DateTimeFormat('pt-BR', {
   year: 'numeric',
 });
 
-function TodayBadge() {
+function MapDateTab() {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -116,10 +116,10 @@ function TodayBadge() {
   return (
     <time
       dateTime={now.toLocaleDateString('sv-SE')}
-      className="absolute right-3 bottom-3 z-10 inline-flex items-center gap-2 rounded-lg  border-primary bg-card px-3 py-1.5 text-sm font-semibold capitalize sm:right-4 sm:bottom-4"
+      className="inline-flex items-center gap-1.5 text-xs font-semibold capitalize sm:text-sm"
     >
-      <CalendarDays className="size-4 text-brand" aria-hidden />
-      {todayFormatter.format(now)}
+      <CalendarDays className="size-3.5 shrink-0 text-brand sm:size-4" aria-hidden />
+      <span className="whitespace-nowrap">{todayFormatter.format(now)}</span>
     </time>
   );
 }
@@ -664,38 +664,46 @@ export function BlockDetailPage() {
 
       <main
         className={cn(
-          'relative flex min-h-[60dvh] min-w-0 flex-col rounded-2xl border border-border/60 bg-card p-3 sm:p-4 lg:h-full lg:min-h-0',
+          'relative flex min-h-[60dvh] min-w-0 flex-col lg:h-full lg:min-h-0',
           blockPanelFromBottom,
         )}
       >
-        <span className="pointer-events-none absolute top-4 left-4 z-10 text-sm font-semibold text-brand sm:top-5 sm:left-5">
-          Mapa do bloco
-        </span>
-        <div className="absolute top-2 right-2 z-10 sm:top-3 sm:right-3">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Configurar mapa"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <Settings />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Configurar mapa</TooltipContent>
-          </Tooltip>
+        {/* Aba (“dedo”): a borda sobe, vira à direita e fecha no canto do card. */}
+        <div className="relative z-10 flex shrink-0 justify-end">
+          <div className="relative mb-[-1px] rounded-t-2xl border border-b-0 border-border/60 bg-card px-3 py-2 sm:px-4">
+            <MapDateTab />
+          </div>
         </div>
-        <div className="min-h-0 flex-1 pt-10 pb-12">
-          <BlockPlanView
-            block={block}
-            onConfigure={() => setSettingsOpen(true)}
-            selectedMachineId={selectedMachineId}
-            onToolbarActionsChange={setMapToolbarActions}
-          />
+
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl rounded-tr-none border border-border/60 bg-card p-3 sm:p-4">
+          <span className="pointer-events-none absolute top-3 left-3 z-10 text-sm font-semibold text-brand sm:top-4 sm:left-4">
+            Mapa do bloco
+          </span>
+          <div className="absolute top-2 right-2 z-10 sm:top-3 sm:right-3">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Configurar mapa"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <Settings />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Configurar mapa</TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="min-h-0 flex-1 pt-9">
+            <BlockPlanView
+              block={block}
+              onConfigure={() => setSettingsOpen(true)}
+              selectedMachineId={selectedMachineId}
+              onToolbarActionsChange={setMapToolbarActions}
+            />
+          </div>
         </div>
-        <TodayBadge />
       </main>
 
       <BlockMachinesColumn

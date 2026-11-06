@@ -16,7 +16,7 @@ export function BlockCard({ block }: { block: BlockSummary }) {
       to={`/controle-produtivo/${block.id}`}
       className="group flex flex-col overflow-hidden rounded-xl ring-1 ring-foreground/10 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:ring-brand focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
-      <div className="flex aspect-[16/10] items-center justify-center bg-[#e8f6df] p-6 dark:bg-black">
+      <div className="flex aspect-[16/10] items-center justify-center bg-muted p-6 dark:bg-black">
         <img
           src={BLOCK_SECTOR_IMAGES[block.sector]}
           alt={sectorLabel}

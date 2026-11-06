@@ -217,11 +217,11 @@ export function PlanZoomViewport({ children, className }: PlanZoomViewportProps)
   const zoomed = view.scale > MIN_SCALE;
 
   return (
-    <div className={cn('relative h-full min-h-0', className)}>
+    <div className={cn('relative flex h-full min-h-0', className)}>
       <div
         ref={viewportRef}
         className={cn(
-          'relative size-full touch-none overflow-hidden rounded-xl select-none',
+          'relative min-h-0 min-w-0 flex-1 touch-none overflow-hidden rounded-xl select-none',
           zoomed ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in',
         )}
         onPointerDown={handlePointerDown}
@@ -245,20 +245,7 @@ export function PlanZoomViewport({ children, className }: PlanZoomViewportProps)
         </div>
       </div>
 
-      <div className="absolute top-full left-0 z-10 mt-1.5 flex items-center gap-1 rounded-lg border border-border/60 bg-card/95 p-1 shadow-sm">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Diminuir zoom"
-          disabled={!zoomed}
-          onClick={() => zoomAt(1 / BUTTON_STEP)}
-        >
-          <Minus />
-        </Button>
-        <span className="w-12 text-center text-xs font-medium tabular-nums">
-          {Math.round(view.scale * 100)}%
-        </span>
+      <div className="ml-1.5 flex shrink-0 flex-col items-center justify-center gap-1 self-center rounded-lg border border-border/60 bg-background/80 p-1">
         <Button
           type="button"
           variant="ghost"
@@ -268,6 +255,19 @@ export function PlanZoomViewport({ children, className }: PlanZoomViewportProps)
           onClick={() => zoomAt(BUTTON_STEP)}
         >
           <Plus />
+        </Button>
+        <span className="min-w-[2.25rem] py-0.5 text-center text-[10px] font-medium tabular-nums">
+          {Math.round(view.scale * 100)}%
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Diminuir zoom"
+          disabled={!zoomed}
+          onClick={() => zoomAt(1 / BUTTON_STEP)}
+        >
+          <Minus />
         </Button>
         <Button
           type="button"

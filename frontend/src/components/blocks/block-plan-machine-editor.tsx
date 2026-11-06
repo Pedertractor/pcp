@@ -361,6 +361,20 @@ export function BlockPlanMachineEditor({
     [machines, selectedMachineId],
   );
 
+  /** Retângulo salvo no backend (só muda quando as posições persistidas mudam). */
+  const savedMapRectForZoom = useMemo((): MachineMapRect | null => {
+    if (!selectedMachine || !isMachineOnMap(selectedMachine)) {
+      return null;
+    }
+    return getMachineMapRect(selectedMachine);
+  }, [
+    selectedMachineId,
+    selectedMachine?.positionX,
+    selectedMachine?.positionY,
+    selectedMachine?.positionWidth,
+    selectedMachine?.positionHeight,
+  ]);
+
   const saveMutation = useMutation({
     mutationFn: ({
       machineId,
@@ -700,31 +714,46 @@ export function BlockPlanMachineEditor({
   const stageReady = planRect.width > 0 && planRect.height > 0;
 
   const planZoom = usePlanZoom();
-  const selectedMachineRef = useRef(selectedMachine);
-  selectedMachineRef.current = selectedMachine;
 
   useEffect(() => {
     if (!planZoom || !stageReady) {
       return;
     }
-    const machine = selectedMachineRef.current;
-    if (!machine) {
+    if (!selectedMachineId) {
       planZoom.resetView();
       return;
     }
-    const rect = getMachineMapRect(machine);
-    if (!rect) {
+
+    // Sem mapeamento ou modo "desenhar caixa": estaca zero (100%) para o usuário dar zoom manual onde quiser.
+    if (hideSelectedSaved || !savedMapRectForZoom) {
+      planZoom.resetView();
       return;
     }
-    const pixels = percentRectToPixels(rect, planRect.width, planRect.height);
+
+    // Já mapeada (resize/visualizar): amplia e centraliza na posição salva — não depende de editingRects
+    // para não brigar com o zoom durante arrastar/redimensionar.
+    const pixels = percentRectToPixels(
+      savedMapRectForZoom,
+      planRect.width,
+      planRect.height,
+    );
     planZoom.focusRect({
       x: planRect.left + pixels.x,
       y: planRect.top + pixels.y - MACHINE_LABEL_GUTTER,
       width: pixels.width,
       height: pixels.height + MACHINE_LABEL_GUTTER,
     });
-    // Zoom only when the selection changes, not on every refetch of the machine.
-  }, [selectedMachineId, stageReady]);
+  }, [
+    planZoom,
+    selectedMachineId,
+    stageReady,
+    hideSelectedSaved,
+    savedMapRectForZoom,
+    planRect.left,
+    planRect.top,
+    planRect.width,
+    planRect.height,
+  ]);
   const minTransformPx = MIN_MACHINE_MAP_DRAG_PX;
 
   const paintColorsQuery = useQuery({
