@@ -7,7 +7,12 @@ import {
   updateBlockCostCentersController,
   uploadBlockPlanImageController,
 } from '../controllers/block.controller.js';
+import {
+  listBlockPaintColorsController,
+  updateBlockPaintColorController,
+} from '../controllers/paint-color.controller.js';
 import { syncBlockPlanningFromXlsController } from '../controllers/planning-sync.controller.js';
+import { listBlockProductionOrdersController } from '../controllers/production-order.controller.js';
 import {
   clearMachineMapPositionController,
   updateMachineMapPositionController,
@@ -22,9 +27,16 @@ import {
   type CreateBlockBody,
   type UpdateBlockCostCentersBody,
 } from '../schemas/block.schemas.js';
+import { planningSyncResultSchema } from '../schemas/planning-sync.schemas.js';
+import { blockProductionOrdersListResponseSchema } from '../schemas/production-order.schemas.js';
 import {
-  planningSyncResultSchema,
-} from '../schemas/planning-sync.schemas.js';
+  blockPaintColorItemSchema,
+  blockPaintColorParamsSchema,
+  blockPaintColorsListResponseSchema,
+  updateBlockPaintColorBodySchema,
+  type BlockPaintColorParams,
+  type UpdateBlockPaintColorBody,
+} from '../schemas/paint-color.schemas.js';
 import {
   machineMapPositionBodySchema,
   machineMapPositionParamsSchema,
@@ -147,6 +159,26 @@ export function blockRoutes(fastify: FastifyInstance) {
     syncBlockPlanningFromXlsController,
   );
 
+  fastify.get<{ Params: BlockIdParams }>(
+    '/:id/production-orders',
+    {
+      schema: {
+        summary: 'List production orders of the block with their sync dates',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: blockIdParamsSchema,
+        response: {
+          200: blockProductionOrdersListResponseSchema.describe(
+            'Production orders for block',
+          ),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    listBlockProductionOrdersController,
+  );
+
   fastify.patch<{ Params: MachineMapPositionParams; Body: MachineMapPositionBody }>(
     '/:id/machines/:machineId/map-position',
     {
@@ -182,6 +214,45 @@ export function blockRoutes(fastify: FastifyInstance) {
       onRequest: [fastify.authenticate, fastify.csrfProtection],
     },
     clearMachineMapPositionController,
+  );
+
+  fastify.get<{ Params: BlockIdParams }>(
+    '/:id/paint-colors',
+    {
+      schema: {
+        summary: 'List paint colors used by the block with optional map hex',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: blockIdParamsSchema,
+        response: {
+          200: blockPaintColorsListResponseSchema.describe(
+            'Paint colors for block',
+          ),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    listBlockPaintColorsController,
+  );
+
+  fastify.patch<{ Params: BlockPaintColorParams; Body: UpdateBlockPaintColorBody }>(
+    '/:id/paint-colors/:colorId',
+    {
+      schema: {
+        summary: 'Set the map display color (hex) for a paint color in this block',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: blockPaintColorParamsSchema,
+        body: updateBlockPaintColorBodySchema,
+        response: {
+          200: blockPaintColorItemSchema.describe('Updated paint color link'),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    updateBlockPaintColorController,
   );
 
   fastify.get<{ Params: BlockIdParams }>(

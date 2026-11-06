@@ -2,8 +2,13 @@ import type { BlockMachine } from '@/types/block';
 
 export const DEFAULT_MACHINE_MAP_WIDTH = 10;
 export const DEFAULT_MACHINE_MAP_HEIGHT = 7;
-export const MIN_MACHINE_MAP_WIDTH = 4;
-export const MIN_MACHINE_MAP_HEIGHT = 3;
+/** Limite inferior em % da planta (permite cards bem pequenos). */
+export const MIN_MACHINE_MAP_WIDTH = 0.12;
+export const MIN_MACHINE_MAP_HEIGHT = 0.12;
+/** Arraste mínimo em pixels ao desenhar no mapa. */
+export const MIN_MACHINE_MAP_DRAG_PX = 3;
+/** Retângulo visível mínimo em pixels (só renderização). */
+export const MIN_MACHINE_MAP_RENDER_PX = 2;
 
 export type MachineMapRect = {
   x: number;
@@ -34,14 +39,8 @@ export function getMachineMapRect(machine: BlockMachine): MachineMapRect | null 
 }
 
 export function clampMapRect(rect: MachineMapRect): MachineMapRect {
-  const width = Math.min(
-    100,
-    Math.max(MIN_MACHINE_MAP_WIDTH, rect.width),
-  );
-  const height = Math.min(
-    100,
-    Math.max(MIN_MACHINE_MAP_HEIGHT, rect.height),
-  );
+  const width = Math.min(100, Math.max(MIN_MACHINE_MAP_WIDTH, rect.width));
+  const height = Math.min(100, Math.max(MIN_MACHINE_MAP_HEIGHT, rect.height));
   const x = Math.min(100 - width, Math.max(0, rect.x));
   const y = Math.min(100 - height, Math.max(0, rect.y));
   return { x, y, width, height };

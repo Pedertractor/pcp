@@ -100,8 +100,10 @@ model Block {
 
   blockPlanImage   BlockPlanImage?   @relation(fields: [blockPlanImageId], references: [id], onDelete: SetNull)
   costCenters      CostCenter[]
-  lines            Line[]
+  machines         Machine[]
   productionOrders ProductionOrder[]
+  productionProcesses ProductionProcess[]
+  paintColorLinks  BlockPaintColor[]
 
   @@map("blocks")
 }
@@ -119,28 +121,33 @@ model CostCenter {
   @@map("cost_centers")
 }
 
-model Line {
-  id      String @id @default(uuid())
-  code    String
-  blockId String @map("block_id")
-
-  block    Block     @relation(fields: [blockId], references: [id], onDelete: Cascade)
-  machines Machine[]
-
-  @@unique([blockId, code])
-  @@map("lines")
-}
-
 model PaintColor {
   id          String  @id @default(uuid())
   name        String
+  nameKey     String  @unique(map: "paint_colors_name_key_key") @map("name_key")
   baseColorId String? @map("base_color_id")
   brand       String?
 
   productionOrders ProductionOrder[]
+  productionProcesses ProductionProcess[]
+  blockLinks       BlockPaintColor[]
 
-  @@unique([name, brand])
   @@map("paint_colors")
+}
+
+/// Cor de mapa vinculada ao bloco (hex #RRGGBB) para exibir na planta.
+model BlockPaintColor {
+  id      String @id @default(uuid())
+  blockId String @map("block_id")
+  colorId String @map("color_id")
+  mapHex  String @map("map_hex")
+
+  block Block      @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  color PaintColor @relation(fields: [colorId], references: [id], onDelete: Cascade)
+
+  @@unique([blockId, colorId])
+  @@index([colorId])
+  @@map("block_paint_colors")
 }
 
 model Machine {
@@ -151,23 +158,25 @@ model Machine {
   positionY  Float?  @map("position_y")
   positionWidth  Float? @map("position_width")
   positionHeight Float? @map("position_height")
-  lineId     String  @map("line_id")
+  blockId    String  @map("block_id")
 
-  line             Line              @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  block            Block             @relation(fields: [blockId], references: [id], onDelete: Restrict)
   productionOrders ProductionOrder[]
+  productionProcesses ProductionProcess[]
 
-  @@index([lineId])
+  @@index([blockId])
   @@map("machines")
 }
 
 model ProductionOrder {
   id          String                @id @default(uuid())
-  ofNumber    String                @unique @map("of_number")
+  ofNumber    String                @map("of_number")
   partCode    String                @map("part_code")
   blockId     String                @map("block_id")
   line        String
   colorId     String?               @map("color_id")
-  area        String?
+  /// Área de uma peça em m² (coluna AREA). Área da OF = area * quantity.
+  area        Float?
   direction   String?
   operation   String?
   costCenter  String?               @map("cost_center")
@@ -175,6 +184,8 @@ model ProductionOrder {
   machineId   String?               @map("machine_id")
   quantity    Int                   @default(0)
   targetDate  DateTime              @map("target_date")
+  /// Data da última sincronização de planejamento que trouxe a OF.
+  syncDate    DateTime              @map("sync_date")
   status      ProductionOrderStatus @default(PENDING)
   completedAt DateTime?             @map("completed_at")
   createdAt   DateTime              @default(now()) @map("created_at")
@@ -183,8 +194,49 @@ model ProductionOrder {
   block   Block       @relation(fields: [blockId], references: [id], onDelete: Restrict)
   color   PaintColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
   machine Machine?    @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  processes ProductionProcess[]
 
+  /// A OF não se repete dentro do bloco; a mesma OF pode existir em outro bloco.
+  @@unique([blockId, ofNumber])
   @@index([blockId])
   @@index([status])
   @@map("production_orders")
+}
+
+/// Processo de execução retornado pela consulta de acompanhamento (a cada 5 min).
+/// Espelha o payload da API; uma OF pode ter um processo por operação (chave OF + OP no bloco).
+model ProductionProcess {
+  id                String    @id @default(uuid())
+  productionOrderId String    @map("production_order_id")
+  blockId           String    @map("block_id")
+  ofNumber          String    @map("of_number")
+
+  opNumber          Int       @map("op_number")
+  costCenter        String    @map("cost_center")
+  plannedAt         DateTime? @map("planned_at")
+  quantity          Int       @default(0)
+  quantityReported  Int?      @map("quantity_reported")
+  startedAt         DateTime? @map("started_at")
+  finishedAt        DateTime? @map("finished_at")
+  badgeNumber       Int?      @map("badge_number")
+  componentCode     Int?      @map("component_code")
+  componentQuantity Int?      @map("component_quantity")
+  machineCode       String    @map("machine_code")
+  machineId         String?   @map("machine_id")
+  /// Nome da cor vindo da consulta de processos (mapa usa quando há início no dia — seção 4 e 5).
+  colorName         String?   @map("color_name")
+  colorId           String?   @map("color_id")
+  /// m² por peça (string na API; persistido como número).
+  area              Float?
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  block           Block           @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  machine         Machine?        @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  color           PaintColor?     @relation(fields: [colorId], references: [id], onDelete: SetNull)
+
+  @@unique([productionOrderId, opNumber])
+  @@index([blockId, startedAt])
+  @@index([blockId, finishedAt])
+  @@index([machineId])
+  @@map("production_processes")
 }

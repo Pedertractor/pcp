@@ -7,6 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { AppShell } from '@/layouts/app-shell';
 import { LoginPage } from '@/pages/auth/login-page';
 import { BlockDetailPage } from '@/pages/blocks/block-detail-page';
+import { BlockProductionOrdersPage } from '@/pages/blocks/block-production-orders-page';
 import { BlocksPage } from '@/pages/blocks/blocks-page';
 import { HomePage } from '@/pages/home-page';
 import { UsuariosPage } from '@/pages/usuarios-page';
@@ -21,6 +22,10 @@ export function AppRouter() {
           <Route
             path="/controle-produtivo/:blockId"
             element={<BlockDetailPage />}
+          />
+          <Route
+            path="/controle-produtivo/:blockId/ofs"
+            element={<BlockProductionOrdersPage />}
           />
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />

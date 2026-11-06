@@ -6,7 +6,8 @@ export type PlanningRow = {
   machineCode: string;
   quantity: number;
   colorName: string | null;
-  area: string | null;
+  /** m² de uma peça. */
+  area: number | null;
   operation: string | null;
   statusDate: string | null;
   targetDate: Date;
@@ -18,7 +19,7 @@ export type PlanningSyncResult = {
   costCenters: string[];
   rowsRead: number;
   rowsMatched: number;
-  linesCreated: number;
+  rowsSkippedByStatus: number;
   machinesCreated: number;
   ordersCreated: number;
   ordersUpdated: number;

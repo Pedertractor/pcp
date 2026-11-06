@@ -1,7 +1,10 @@
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -19,6 +22,28 @@ const BUTTON_STEP = 1.5;
 type View = { scale: number; x: number; y: number };
 
 const INITIAL_VIEW: View = { scale: 1, x: 0, y: 0 };
+/** Fraction of the viewport the focused rect should occupy. */
+const FOCUS_FILL = 0.4;
+const FOCUS_MAX_SCALE = 5;
+
+/** Rect in unzoomed content pixels (same space as the viewport at 100%). */
+export type PlanContentRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type PlanZoomControls = {
+  focusRect: (rect: PlanContentRect) => void;
+  resetView: () => void;
+};
+
+const PlanZoomContext = createContext<PlanZoomControls | null>(null);
+
+export function usePlanZoom(): PlanZoomControls | null {
+  return useContext(PlanZoomContext);
+}
 
 type PlanZoomViewportProps = {
   children: ReactNode;
@@ -72,6 +97,36 @@ export function PlanZoomViewport({ children, className }: PlanZoomViewportProps)
         );
       });
     },
+    [],
+  );
+
+  const controls = useMemo<PlanZoomControls>(
+    () => ({
+      focusRect: (rect) => {
+        const viewport = viewportRef.current;
+        if (!viewport || rect.width <= 0 || rect.height <= 0) {
+          return;
+        }
+        const { width, height } = viewport.getBoundingClientRect();
+        const scale = Math.min(
+          FOCUS_MAX_SCALE,
+          Math.max(
+            1.5,
+            Math.min(width / rect.width, height / rect.height) * FOCUS_FILL,
+          ),
+        );
+        const cx = rect.x + rect.width / 2;
+        const cy = rect.y + rect.height / 2;
+        setView(
+          clampView(
+            { scale, x: width / 2 - cx * scale, y: height / 2 - cy * scale },
+            width,
+            height,
+          ),
+        );
+      },
+      resetView: () => setView(INITIAL_VIEW),
+    }),
     [],
   );
 
@@ -184,7 +239,9 @@ export function PlanZoomViewport({ children, className }: PlanZoomViewportProps)
             transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
           }}
         >
-          {children}
+          <PlanZoomContext.Provider value={controls}>
+            {children}
+          </PlanZoomContext.Provider>
         </div>
       </div>
 

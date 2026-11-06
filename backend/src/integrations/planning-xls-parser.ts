@@ -15,6 +15,17 @@ function cellNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function cellAreaM2(value: unknown): number | null {
+  const raw = typeof value === 'string' ? value.trim().replace(',', '.') : value;
+  if (raw === '' || raw === null || raw === undefined) {
+    return null;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? Math.round(parsed * 10_000) / 10_000
+    : null;
+}
+
 function parseTargetDate(row: Record<string, unknown>, fallback: Date): Date {
   const serial = row.DTINI_PROC ?? row.DTFIM_PROC;
   if (typeof serial === 'number' && serial > 0) {
@@ -47,7 +58,7 @@ function mapRow(
     machineCode,
     quantity: Math.max(0, Math.round(cellNumber(row.QTE))),
     colorName: cellString(row.COR) || null,
-    area: cellString(row.AREA) || null,
+    area: cellAreaM2(row.AREA),
     operation: cellString(row.OPERACAO) || null,
     statusDate: cellString(row.STATUS_DATA) || null,
     targetDate: parseTargetDate(row, referenceDate),

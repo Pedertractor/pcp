@@ -16,15 +16,25 @@ type SyncInput = {
   assignDemoPositions?: boolean;
 };
 
-function mapOrderStatus(statusDate: string | null): ProductionOrderStatus {
-  const value = (statusDate ?? '').toUpperCase();
-  if (value.includes('NO ATRASO')) {
-    return ProductionOrderStatus.OVERDUE;
+function paintColorIdentity(raw: string): { name: string; nameKey: string } | null {
+  const name = raw.trim().replace(/\s+/g, ' ');
+  if (!name) {
+    return null;
   }
-  if (value.includes('HOJE')) {
-    return ProductionOrderStatus.PENDING;
-  }
-  return ProductionOrderStatus.PENDING;
+  return { name, nameKey: name.toLocaleLowerCase('pt-BR') };
+}
+
+const SYNCED_STATUS_DATES = {
+  HOJE: ProductionOrderStatus.PENDING,
+  'NO ATRASO': ProductionOrderStatus.OVERDUE,
+} as const;
+
+type SyncedStatusDate = keyof typeof SYNCED_STATUS_DATES;
+
+/** `STATUS_DATA` chega com pontos à esquerda (ex.: `......HOJE`). */
+function syncedStatusDate(statusDate: string | null): SyncedStatusDate | null {
+  const value = (statusDate ?? '').replace(/^[.\s]+/, '').trim().toUpperCase();
+  return value in SYNCED_STATUS_DATES ? (value as SyncedStatusDate) : null;
 }
 
 export class ProductionPlanningSyncService {
@@ -61,54 +71,42 @@ export class ProductionPlanningSyncService {
     }
 
     const referenceDay = startOfLocalDay(input.referenceDate);
-    const matched = input.rows.filter((row) =>
+    const inCostCenters = input.rows.filter((row) =>
       costCenterMatches(row.costCenter, costCenters),
     );
+    const matched = inCostCenters.filter(
+      (row) => syncedStatusDate(row.statusDate) !== null,
+    );
 
-    let linesCreated = 0;
     let machinesCreated = 0;
     let ordersCreated = 0;
     let ordersUpdated = 0;
 
-    const lineCache = new Map<string, string>();
     const machineCache = new Map<string, string>();
     const colorCache = new Map<string, string>();
 
     for (const row of matched) {
       const lineCode = row.lineCode.trim();
-      let lineId = lineCache.get(lineCode);
-      if (!lineId) {
-        const existingLine = await this.prisma.line.findUnique({
-          where: { blockId_code: { blockId: block.id, code: lineCode } },
-          select: { id: true },
-        });
-        if (existingLine) {
-          lineId = existingLine.id;
-        } else {
-          const created = await this.prisma.line.create({
-            data: { blockId: block.id, code: lineCode },
-            select: { id: true },
-          });
-          lineId = created.id;
-          linesCreated += 1;
-        }
-        lineCache.set(lineCode, lineId);
-      }
-
       const machineCode = row.machineCode.trim();
       let machineId = machineCache.get(machineCode);
       if (!machineId) {
         const existingMachine = await this.prisma.machine.findUnique({
           where: { code: machineCode },
-          select: { id: true },
+          select: { id: true, blockId: true },
         });
         if (existingMachine) {
+          if (existingMachine.blockId !== block.id) {
+            throw new AppError(
+              `Código de máquina já cadastrado em outro bloco: ${machineCode}.`,
+              409,
+            );
+          }
           machineId = existingMachine.id;
         } else {
           const created = await this.prisma.machine.create({
             data: {
               code: machineCode,
-              lineId,
+              blockId: block.id,
               costCenter: normalizeCostCenterCode(row.costCenter),
             },
             select: { id: true },
@@ -120,35 +118,30 @@ export class ProductionPlanningSyncService {
       }
 
       let colorId: string | null = null;
-      if (row.colorName) {
-        const colorKey = row.colorName.trim();
-        colorId = colorCache.get(colorKey) ?? null;
+      const color = row.colorName ? paintColorIdentity(row.colorName) : null;
+      if (color) {
+        colorId = colorCache.get(color.nameKey) ?? null;
         if (!colorId) {
-          const existingColor = await this.prisma.paintColor.findFirst({
-            where: { name: colorKey, brand: null },
+          const savedColor = await this.prisma.paintColor.upsert({
+            where: { nameKey: color.nameKey },
+            create: { name: color.name, nameKey: color.nameKey },
+            update: {},
             select: { id: true },
           });
-          if (existingColor) {
-            colorId = existingColor.id;
-          } else {
-            const createdColor = await this.prisma.paintColor.create({
-              data: { name: colorKey },
-              select: { id: true },
-            });
-            colorId = createdColor.id;
-          }
-          colorCache.set(colorKey, colorId);
+          colorId = savedColor.id;
+          colorCache.set(color.nameKey, colorId);
         }
       }
 
       const existingOrder = await this.prisma.productionOrder.findUnique({
-        where: { ofNumber: row.ofNumber },
-        select: { id: true },
+        where: {
+          blockId_ofNumber: { blockId: block.id, ofNumber: row.ofNumber },
+        },
+        select: { id: true, status: true },
       });
 
       const data = {
         partCode: row.partCode,
-        blockId: block.id,
         line: lineCode,
         colorId,
         area: row.area,
@@ -158,18 +151,22 @@ export class ProductionPlanningSyncService {
         machineId,
         quantity: row.quantity,
         targetDate: referenceDay,
-        status: mapOrderStatus(row.statusDate),
+        syncDate: referenceDay,
+        status: SYNCED_STATUS_DATES[syncedStatusDate(row.statusDate)!],
       };
 
       if (existingOrder) {
         await this.prisma.productionOrder.update({
           where: { id: existingOrder.id },
-          data,
+          data:
+            existingOrder.status === ProductionOrderStatus.COMPLETED
+              ? { ...data, status: ProductionOrderStatus.COMPLETED }
+              : data,
         });
         ordersUpdated += 1;
       } else {
         await this.prisma.productionOrder.create({
-          data: { ofNumber: row.ofNumber, ...data },
+          data: { ofNumber: row.ofNumber, blockId: block.id, ...data },
         });
         ordersCreated += 1;
       }
@@ -191,7 +188,7 @@ export class ProductionPlanningSyncService {
       costCenters,
       rowsRead: input.rows.length,
       rowsMatched: matched.length,
-      linesCreated,
+      rowsSkippedByStatus: inCostCenters.length - matched.length,
       machinesCreated,
       ordersCreated,
       ordersUpdated,
@@ -201,7 +198,7 @@ export class ProductionPlanningSyncService {
 
   private async assignDemoPositions(blockId: string): Promise<number> {
     const machines = await this.prisma.machine.findMany({
-      where: { line: { blockId }, positionX: null, positionY: null },
+      where: { blockId, positionX: null, positionY: null },
       orderBy: { code: 'asc' },
       select: { id: true },
     });

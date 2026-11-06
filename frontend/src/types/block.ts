@@ -18,7 +18,6 @@ export type BlockSummary = {
   name: string;
   sector: BlockSector;
   costCenters: CostCenter[];
-  linesCount: number;
   machinesCount: number;
   productionOrdersCount: number;
   createdAt: string;
@@ -52,18 +51,52 @@ export type BlockMachine = {
   positionWidth: number | null;
   positionHeight: number | null;
   expectedPiecesToday: number;
-};
-
-export type BlockLine = {
-  id: string;
-  code: string;
-  machines: BlockMachine[];
+  expectedAreaToday: number;
+  /** Peças apontadas em processos com fim no dia atual (consulta de processos). */
+  producedPiecesToday: number;
+  /** m² produzido no dia (área por peça × quantidade efetiva do processo). */
+  producedAreaToday: number;
 };
 
 export type BlockDetail = BlockSummary & {
   blockPlanImage: BlockPlanImage | null;
-  lines: BlockLine[];
+  machines: BlockMachine[];
   expectedPiecesToday: number;
+  expectedAreaToday: number;
+  producedPiecesToday: number;
+  producedAreaToday: number;
+};
+
+export type ProductionOrderStatus =
+  | 'PENDING'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'OVERDUE';
+
+export const PRODUCTION_ORDER_STATUS_LABELS: Record<
+  ProductionOrderStatus,
+  string
+> = {
+  PENDING: 'Pendente',
+  IN_PROGRESS: 'Em andamento',
+  COMPLETED: 'Concluída',
+  OVERDUE: 'Atrasada',
+};
+
+export type BlockProductionOrder = {
+  id: string;
+  ofNumber: string;
+  partCode: string;
+  machineCode: string | null;
+  colorName: string | null;
+  operation: string | null;
+  costCenter: string | null;
+  quantity: number;
+  area: number | null;
+  totalArea: number;
+  statusDate: string | null;
+  status: ProductionOrderStatus;
+  syncDate: string;
 };
 
 export type CreateBlockInput = {

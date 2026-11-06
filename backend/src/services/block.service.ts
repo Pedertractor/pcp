@@ -24,8 +24,7 @@ const costCenterSelect = {
 
 const blockSummaryInclude = {
   costCenters: { select: costCenterSelect, orderBy: { costCenter: 'asc' } },
-  lines: { select: { _count: { select: { machines: true } } } },
-  _count: { select: { lines: true, productionOrders: true } },
+  _count: { select: { machines: true, productionOrders: true } },
 } as const;
 
 type BlockWithSummary = {
@@ -35,16 +34,30 @@ type BlockWithSummary = {
   createdAt: Date;
   updatedAt: Date;
   costCenters: BlockSummary['costCenters'];
-  lines: { _count: { machines: number } }[];
-  _count: { lines: number; productionOrders: number };
+  _count: { machines: number; productionOrders: number };
 };
 
-function todayRange(): { start: Date; end: Date } {
+function roundArea(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/** Início do dia civil local e fim exclusivo (para filtros `finishedAt` / `syncDate`). */
+function localDayRange(): { start: Date; end: Date } {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { start, end };
+}
+
+function effectiveProcessQuantity(
+  quantityReported: number | null,
+  quantity: number,
+): number {
+  if (quantityReported !== null && quantityReported >= 0) {
+    return quantityReported;
+  }
+  return quantity >= 0 ? quantity : 0;
 }
 
 function toBlockSummary(block: BlockWithSummary): BlockSummary {
@@ -53,11 +66,7 @@ function toBlockSummary(block: BlockWithSummary): BlockSummary {
     name: block.name,
     sector: block.sector,
     costCenters: block.costCenters,
-    linesCount: block._count.lines,
-    machinesCount: block.lines.reduce(
-      (total, line) => total + line._count.machines,
-      0,
-    ),
+    machinesCount: block._count.machines,
     productionOrdersCount: block._count.productionOrders,
     createdAt: block.createdAt.toISOString(),
     updatedAt: block.updatedAt.toISOString(),
@@ -92,24 +101,17 @@ export class BlockService {
             updatedAt: true,
           },
         },
-        lines: {
+        machines: {
+          where: { blockId: id },
           orderBy: { code: 'asc' },
           select: {
             id: true,
             code: true,
-            _count: { select: { machines: true } },
-            machines: {
-              orderBy: { code: 'asc' },
-              select: {
-                id: true,
-                code: true,
-                costCenter: true,
-                positionX: true,
-                positionY: true,
-                positionWidth: true,
-                positionHeight: true,
-              },
-            },
+            costCenter: true,
+            positionX: true,
+            positionY: true,
+            positionWidth: true,
+            positionHeight: true,
           },
         },
       },
@@ -119,19 +121,71 @@ export class BlockService {
       throw new AppError('Bloco não encontrado', 404);
     }
 
-    const { start, end } = todayRange();
-    const piecesByMachine = await this.prisma.productionOrder.groupBy({
-      by: ['machineId'],
-      where: { blockId: id, targetDate: { gte: start, lt: end } },
-      _sum: { quantity: true },
+    const orders = await this.prisma.productionOrder.findMany({
+      where: { blockId: id },
+      select: { machineId: true, quantity: true, area: true },
     });
-    const piecesMap = new Map(
-      piecesByMachine.map((item) => [item.machineId, item._sum.quantity ?? 0]),
-    );
-    const expectedPiecesToday = piecesByMachine.reduce(
-      (total, item) => total + (item._sum.quantity ?? 0),
-      0,
-    );
+    const totalsByMachine = new Map<
+      string | null,
+      { pieces: number; area: number; producedPieces: number; producedArea: number }
+    >();
+    let expectedPiecesToday = 0;
+    let expectedAreaToday = 0;
+    for (const order of orders) {
+      const orderArea = (order.area ?? 0) * order.quantity;
+      const totals = totalsByMachine.get(order.machineId) ?? {
+        pieces: 0,
+        area: 0,
+        producedPieces: 0,
+        producedArea: 0,
+      };
+      totals.pieces += order.quantity;
+      totals.area += orderArea;
+      totalsByMachine.set(order.machineId, totals);
+      expectedPiecesToday += order.quantity;
+      expectedAreaToday += orderArea;
+    }
+
+    const { start: dayStart, end: dayEnd } = localDayRange();
+    const finishedProcesses = await this.prisma.productionProcess.findMany({
+      where: {
+        blockId: id,
+        finishedAt: { not: null, gte: dayStart, lt: dayEnd },
+      },
+      select: {
+        machineId: true,
+        quantity: true,
+        quantityReported: true,
+        area: true,
+        productionOrder: { select: { area: true } },
+      },
+    });
+
+    let producedPiecesToday = 0;
+    let producedAreaToday = 0;
+    for (const proc of finishedProcesses) {
+      const m2PerPiece =
+        proc.area ??
+        proc.productionOrder.area ??
+        0;
+      const qty = effectiveProcessQuantity(
+        proc.quantityReported,
+        proc.quantity,
+      );
+      const procArea = m2PerPiece * qty;
+      producedPiecesToday += qty;
+      producedAreaToday += procArea;
+      const key = proc.machineId;
+      const mtotals = totalsByMachine.get(key) ?? {
+        pieces: 0,
+        area: 0,
+        producedPieces: 0,
+        producedArea: 0,
+      };
+      mtotals.producedPieces += qty;
+      mtotals.producedArea += procArea;
+      totalsByMachine.set(key, mtotals);
+    }
 
     return {
       ...toBlockSummary(block),
@@ -141,15 +195,19 @@ export class BlockService {
             updatedAt: block.blockPlanImage.updatedAt.toISOString(),
           }
         : null,
-      lines: block.lines.map(({ id: lineId, code, machines }) => ({
-        id: lineId,
-        code,
-        machines: machines.map((machine) => ({
-          ...machine,
-          expectedPiecesToday: piecesMap.get(machine.id) ?? 0,
-        })),
+      machines: block.machines.map((machine) => ({
+        ...machine,
+        expectedPiecesToday: totalsByMachine.get(machine.id)?.pieces ?? 0,
+        expectedAreaToday: roundArea(totalsByMachine.get(machine.id)?.area ?? 0),
+        producedPiecesToday: totalsByMachine.get(machine.id)?.producedPieces ?? 0,
+        producedAreaToday: roundArea(
+          totalsByMachine.get(machine.id)?.producedArea ?? 0,
+        ),
       })),
       expectedPiecesToday,
+      expectedAreaToday: roundArea(expectedAreaToday),
+      producedPiecesToday,
+      producedAreaToday: roundArea(producedAreaToday),
     };
   }
 
@@ -328,7 +386,7 @@ export class BlockService {
     },
   ) {
     const machine = await this.prisma.machine.findFirst({
-      where: { id: machineId, line: { blockId } },
+      where: { id: machineId, blockId },
       select: { id: true, code: true },
     });
     if (!machine) {
@@ -351,7 +409,7 @@ export class BlockService {
 
   async clearMachineMapPosition(blockId: string, machineId: string) {
     const machine = await this.prisma.machine.findFirst({
-      where: { id: machineId, line: { blockId } },
+      where: { id: machineId, blockId },
       select: { id: true, code: true },
     });
     if (!machine) {

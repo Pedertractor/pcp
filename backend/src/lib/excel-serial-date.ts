@@ -14,6 +14,13 @@ export function parseReferenceDate(value: string): Date {
   return parsed;
 }
 
+/** Dia local no formato AAAA-MM-DD. */
+export function toLocalDateKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 export function startOfLocalDay(date: Date): Date {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);

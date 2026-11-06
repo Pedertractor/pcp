@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Konva from 'konva';
 import {
   useCallback,
@@ -8,19 +8,26 @@ import {
   useState,
   type RefObject,
 } from 'react';
-import { Group, Layer, Rect, Stage, Text, Transformer } from 'react-konva';
+import {
+  Circle,
+  Group,
+  Image as KonvaImage,
+  Layer,
+  Rect,
+  Stage,
+  Transformer,
+} from 'react-konva';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
+import { usePlanZoom } from '@/components/blocks/plan-zoom-viewport';
 import { usePlanImageLayout } from '@/hooks/blocks/use-plan-image-layout';
+import { useDevicePixelRatio } from '@/hooks/use-device-pixel-ratio';
 import {
   clampMapRect,
-  DEFAULT_MACHINE_MAP_HEIGHT,
-  DEFAULT_MACHINE_MAP_WIDTH,
   getMachineMapRect,
   isMachineOnMap,
-  MIN_MACHINE_MAP_HEIGHT,
-  MIN_MACHINE_MAP_WIDTH,
+  MIN_MACHINE_MAP_DRAG_PX,
+  MIN_MACHINE_MAP_RENDER_PX,
   percentRectToPixels,
   pixelsToPercentRect,
   rectsEqual,
@@ -29,43 +36,92 @@ import {
 import { cn } from '@/lib/utils';
 import {
   blockDetailQueryKey,
+  blockPaintColorsQueryKey,
+  listBlockPaintColors,
   removeMachineMapPosition,
   updateMachineMapPosition,
 } from '@/services/blocks/block.service';
 import type { BlockDetail, BlockMachine } from '@/types/block';
+import sprayGunUrl from '@/public/pistola-de-pulverizacao-teste.png';
+
+/** Demo visual only: máquina cujo código contém este trecho (ex.: 728). */
+const DEMO_SPRAY_MACHINE_CODE = '728';
+const DEMO_SPRAY_COLOR_NAME = 'amarelo caterpillar';
 
 type BlockPlanMachineEditorProps = {
   block: BlockDetail;
   imageSrc: string;
   selectedMachineId: string | null;
-  onSelectMachine: (machineId: string | null) => void;
+  onToolbarActionsChange?: (actions: MachineMapToolbarActions | null) => void;
+};
+
+export type MachineMapMapMode = 'draw' | 'resize' | 'idle';
+
+export type MachineMapToolbarActions = {
+  canConclude: boolean;
+  canRemove: boolean;
+  isPending: boolean;
+  mapMode: MachineMapMapMode;
+  draftRect: MachineMapRect | null;
+  onConclude: () => void;
+  onRemove: () => void;
+  onStartDraw: () => void;
+  onStartResize: () => void;
+  onCancelEdit: () => void;
 };
 
 const STROKE = 'hsl(142 76% 36%)';
 const STROKE_SELECTED = 'hsl(142 76% 28%)';
 const FILL = 'hsla(142, 76%, 36%, 0.22)';
 const FILL_SELECTED = 'hsla(142, 76%, 36%, 0.35)';
+const MACHINE_LABEL_FONT_SIZE = 5;
+const MACHINE_LABEL_HEIGHT = 4;
+const MACHINE_LABEL_GAP = 1;
+const MACHINE_LABEL_GUTTER = MACHINE_LABEL_HEIGHT + MACHINE_LABEL_GAP + 1;
+const MACHINE_LABEL_TEXT = 'hsl(142, 72%, 14%)';
+const MACHINE_LABEL_TAG_FILL = 'rgba(255, 255, 255, 0.92)';
+
+function renderBoxPixels(
+  rect: MachineMapRect,
+  planWidth: number,
+  planHeight: number,
+) {
+  const pixels = percentRectToPixels(rect, planWidth, planHeight);
+  return {
+    x: pixels.x,
+    y: pixels.y + MACHINE_LABEL_GUTTER,
+    width: Math.max(MIN_MACHINE_MAP_RENDER_PX, pixels.width),
+    height: Math.max(MIN_MACHINE_MAP_RENDER_PX, pixels.height),
+  };
+}
+
+function pointerToPlant(
+  pointer: { x: number; y: number },
+  planWidth: number,
+  planHeight: number,
+) {
+  return {
+    x: Math.max(0, Math.min(planWidth, pointer.x)),
+    y: Math.max(0, Math.min(planHeight, pointer.y - MACHINE_LABEL_GUTTER)),
+  };
+}
 
 function collectMachines(block: BlockDetail): BlockMachine[] {
-  const byId = new Map<string, BlockMachine>();
-  for (const line of block.lines) {
-    for (const machine of line.machines) {
-      if (!byId.has(machine.id)) {
-        byId.set(machine.id, machine);
-      }
-    }
-  }
-  return [...byId.values()].sort((a, b) => a.code.localeCompare(b.code));
+  return [...block.machines].sort((a, b) => a.code.localeCompare(b.code));
 }
 
 function displayRectForMachine(
   machine: BlockMachine,
   selectedMachineId: string | null,
   editingRects: Record<string, MachineMapRect>,
+  hideSelectedSaved: boolean,
 ): MachineMapRect | null {
   if (machine.id === selectedMachineId) {
     if (editingRects[machine.id]) {
       return editingRects[machine.id];
+    }
+    if (hideSelectedSaved) {
+      return null;
     }
     if (isMachineOnMap(machine)) {
       return getMachineMapRect(machine);
@@ -78,52 +134,155 @@ function displayRectForMachine(
   return null;
 }
 
+function rectFromCornerDrag(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  planWidth: number,
+  planHeight: number,
+): MachineMapRect | null {
+  const x = Math.min(start.x, end.x);
+  const y = Math.min(start.y, end.y);
+  const width = Math.abs(end.x - start.x);
+  const height = Math.abs(end.y - start.y);
+
+  if (width < MIN_MACHINE_MAP_DRAG_PX || height < MIN_MACHINE_MAP_DRAG_PX) {
+    return null;
+  }
+
+  return pixelsToPercentRect(
+    Math.max(0, Math.min(x, planWidth - width)),
+    Math.max(0, Math.min(y, planHeight - height)),
+    width,
+    height,
+    planWidth,
+    planHeight,
+  );
+}
+
+function readRectFromNode(
+  node: Konva.Rect,
+  planWidth: number,
+  planHeight: number,
+): MachineMapRect {
+  const scaleX = node.scaleX();
+  const scaleY = node.scaleY();
+  node.scaleX(1);
+  node.scaleY(1);
+  const width = Math.max(MIN_MACHINE_MAP_RENDER_PX, node.width() * scaleX);
+  const height = Math.max(MIN_MACHINE_MAP_RENDER_PX, node.height() * scaleY);
+  let x = node.x();
+  let y = node.y() - MACHINE_LABEL_GUTTER;
+  x = Math.max(0, Math.min(planWidth - width, x));
+  y = Math.max(0, Math.min(planHeight - height, y));
+  node.position({ x, y: y + MACHINE_LABEL_GUTTER });
+  node.size({ width, height });
+  return pixelsToPercentRect(x, y, width, height, planWidth, planHeight);
+}
+
+const SPRAY_PARTICLE_COUNT = 22;
+
+type MachineSprayPaintDemoProps = {
+  machine: BlockMachine;
+  rect: MachineMapRect;
+  planWidth: number;
+  planHeight: number;
+  color: string;
+};
+
+/**
+ * Simulação visual: pistola + névoa na cor (demo; remover ou trocar por dados reais depois).
+ */
+function MachineSprayPaintDemo({
+  machine,
+  rect,
+  planWidth,
+  planHeight,
+  color,
+}: MachineSprayPaintDemoProps) {
+  const [gunImage, setGunImage] = useState<HTMLImageElement | null>(null);
+  const [animPhase, setAnimPhase] = useState(0);
+
+  useEffect(() => {
+    const img = new window.Image();
+    img.src = sprayGunUrl;
+    img.onload = () => setGunImage(img);
+  }, []);
+
+  useEffect(() => {
+    let frame = 0;
+    const id = window.setInterval(() => {
+      frame += 1;
+      setAnimPhase(frame);
+    }, 33);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const box = renderBoxPixels(rect, planWidth, planHeight);
+  const shortSide = Math.min(box.width, box.height);
+  const pad = Math.max(3, shortSide * 0.05);
+  const gunSize = Math.max(18, Math.min(40, shortSide * 0.38));
+  const labelCenterY = box.y - MACHINE_LABEL_GAP - MACHINE_LABEL_HEIGHT / 2;
+  const gunX = box.x + box.width - gunSize - pad;
+  const gunY = Math.max(0, labelCenterY - gunSize / 2);
+  const nozzleX = gunX + gunSize * 0.78;
+  const nozzleY = gunY + gunSize * 0.55;
+  const t = animPhase * 0.12;
+
+  const particles = Array.from({ length: SPRAY_PARTICLE_COUNT }, (_, i) => {
+    const seed = i * 1.7 + machine.code.length;
+    const travel = ((t + seed * 0.35) % 3.2) / 3.2;
+    const lane = Math.sin(seed * 12.9898) * 0.6 + Math.sin(seed * 4.1 + t * 2) * 0.4;
+    const spread = lane * travel * gunSize * 0.5;
+    const px = nozzleX + travel * gunSize * 1.55;
+    const py = nozzleY + spread;
+    const opacity = Math.max(0.08, 0.82 * (1 - travel ** 1.05));
+    const radius = 1.8 + travel * 4.5 + (i % 3) * 0.5;
+    return { px, py, opacity, radius, key: i };
+  });
+
+  return (
+    <Group listening={false} name={`spray-demo-${machine.id}`}>
+      {/* Pistola primeiro: partículas por cima (PNG escuro cobria o spray). */}
+      {gunImage ? (
+        <KonvaImage
+          image={gunImage}
+          x={gunX}
+          y={gunY}
+          width={gunSize}
+          height={gunSize}
+          listening={false}
+        />
+      ) : null}
+      {particles.map((p) => (
+        <Circle
+          key={p.key}
+          x={p.px}
+          y={p.py}
+          radius={p.radius}
+          fill={color}
+          opacity={p.opacity}
+          shadowColor={color}
+          shadowBlur={6}
+          shadowOpacity={0.55}
+          perfectDrawEnabled={false}
+        />
+      ))}
+    </Group>
+  );
+}
+
 type MachineShapeProps = {
   machine: BlockMachine;
   rect: MachineMapRect;
   planWidth: number;
   planHeight: number;
   selected: boolean;
-  interactive: boolean;
-  shapeRef?: RefObject<Konva.Group | null>;
-  onSelect: () => void;
-  onRectChange: (rect: MachineMapRect) => void;
+  dashed?: boolean;
+  listening?: boolean;
+  shapeRef?: RefObject<Konva.Rect | null>;
+  onContextMenu?: (event: Konva.KonvaEventObject<PointerEvent>) => void;
+  onTransformEnd?: () => void;
 };
-
-function readRectFromGroup(
-  group: Konva.Group,
-  planWidth: number,
-  planHeight: number,
-): MachineMapRect {
-  const minW = (MIN_MACHINE_MAP_WIDTH / 100) * planWidth;
-  const minH = (MIN_MACHINE_MAP_HEIGHT / 100) * planHeight;
-  const rect = group.findOne('Rect') as Konva.Rect | undefined;
-  if (!rect) {
-    return clampMapRect({
-      x: 0,
-      y: 0,
-      width: DEFAULT_MACHINE_MAP_WIDTH,
-      height: DEFAULT_MACHINE_MAP_HEIGHT,
-    });
-  }
-
-  const scaleX = group.scaleX();
-  const scaleY = group.scaleY();
-  group.scaleX(1);
-  group.scaleY(1);
-
-  const width = Math.max(minW, rect.width() * scaleX);
-  const height = Math.max(minH, rect.height() * scaleY);
-  rect.width(width);
-  rect.height(height);
-
-  let { x, y } = group.position();
-  x = Math.min(planWidth - width, Math.max(0, x));
-  y = Math.min(planHeight - height, Math.max(0, y));
-  group.position({ x, y });
-
-  return pixelsToPercentRect(x, y, width, height, planWidth, planHeight);
-}
 
 function MachineShape({
   machine,
@@ -131,105 +290,70 @@ function MachineShape({
   planWidth,
   planHeight,
   selected,
-  interactive,
+  dashed = false,
+  listening = false,
   shapeRef,
-  onSelect,
-  onRectChange,
+  onContextMenu,
+  onTransformEnd,
 }: MachineShapeProps) {
-  const pixels = percentRectToPixels(rect, planWidth, planHeight);
-
-  function finishInteraction(group: Konva.Group) {
-    onRectChange(readRectFromGroup(group, planWidth, planHeight));
-  }
+  const box = renderBoxPixels(rect, planWidth, planHeight);
 
   return (
-    <Group
-      ref={shapeRef}
-      x={pixels.x}
-      y={pixels.y}
-      draggable={interactive && selected}
-      onClick={onSelect}
-      onTap={onSelect}
-      onDragEnd={(event) => finishInteraction(event.target as Konva.Group)}
-      onTransformEnd={(event) => finishInteraction(event.target as Konva.Group)}
-    >
+    <Group listening={listening} name={machine.code}>
       <Rect
-        width={pixels.width}
-        height={pixels.height}
-        fill={selected ? FILL_SELECTED : FILL}
+        ref={shapeRef}
+        x={box.x}
+        y={box.y}
+        width={box.width}
+        height={box.height}
+        fill={dashed ? 'transparent' : selected ? FILL_SELECTED : FILL}
         stroke={selected ? STROKE_SELECTED : STROKE}
-        strokeWidth={selected ? 2.5 : 2}
-      />
-      <Text
-        x={4}
-        y={4}
-        text={machine.code}
-        fontSize={11}
-        fontStyle="bold"
-        fill={STROKE_SELECTED}
-        listening={false}
+        strokeWidth={selected ? 1.25 : 1}
+        dash={dashed ? [10, 6] : undefined}
+        opacity={dashed ? 1 : selected ? 1 : 0.9}
+        onContextMenu={onContextMenu}
+        onTransformEnd={onTransformEnd}
       />
     </Group>
   );
 }
 
-function rectFromPointerDrag(
-  start: { x: number; y: number },
-  end: { x: number; y: number },
-  planWidth: number,
-  planHeight: number,
-): MachineMapRect {
-  const minDragPx = 6;
-  const dx = Math.abs(end.x - start.x);
-  const dy = Math.abs(end.y - start.y);
-
-  if (dx < minDragPx && dy < minDragPx) {
-    return clampMapRect({
-      x:
-        (start.x / planWidth) * 100 - DEFAULT_MACHINE_MAP_WIDTH / 2,
-      y:
-        (start.y / planHeight) * 100 - DEFAULT_MACHINE_MAP_HEIGHT / 2,
-      width: DEFAULT_MACHINE_MAP_WIDTH,
-      height: DEFAULT_MACHINE_MAP_HEIGHT,
-    });
-  }
-
-  const x1 = Math.min(start.x, end.x);
-  const y1 = Math.min(start.y, end.y);
-  const x2 = Math.max(start.x, end.x);
-  const y2 = Math.max(start.y, end.y);
-  return pixelsToPercentRect(
-    x1,
-    y1,
-    x2 - x1,
-    y2 - y1,
-    planWidth,
-    planHeight,
-  );
-}
-
-function BlockPlanMachineEditor({
+export function BlockPlanMachineEditor({
   block,
   imageSrc,
   selectedMachineId,
-  onSelectMachine,
+  onToolbarActionsChange,
 }: BlockPlanMachineEditorProps) {
   const queryClient = useQueryClient();
   const containerRef = useRef<HTMLDivElement>(null);
-  const selectedShapeRef = useRef<Konva.Group>(null);
+  const sectorRectRef = useRef<Konva.Rect>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
-  const drawSessionRef = useRef<{ x: number; y: number } | null>(null);
-  const [isDrawingRect, setIsDrawingRect] = useState(false);
+  const drawStartRef = useRef<{ x: number; y: number } | null>(null);
+  const createDraftRef = useRef<MachineMapRect | null>(null);
+
   const [naturalSize, setNaturalSize] = useState({ width: 1, height: 1 });
+  const [mapMode, setMapMode] = useState<MachineMapMapMode>('idle');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [createDraftRect, setCreateDraftRect] = useState<MachineMapRect | null>(
+    null,
+  );
   const [editingRects, setEditingRects] = useState<
     Record<string, MachineMapRect>
   >({});
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const planRect = usePlanImageLayout(
     containerRef,
     naturalSize.width,
     naturalSize.height,
   );
+  const pixelRatio = useDevicePixelRatio();
+  // Konva reads its pixel ratio once at load; it must be set before the Stage
+  // (keyed by pixelRatio below) recreates its canvases.
+  Konva.pixelRatio = pixelRatio;
   const machines = useMemo(() => collectMachines(block), [block]);
 
   const selectedMachine = useMemo(
@@ -260,6 +384,9 @@ function BlockPlanMachineEditor({
         delete next[variables.machineId];
         return next;
       });
+      setCreateDraftRect(null);
+      createDraftRef.current = null;
+      setMapMode('idle');
       toast.success('Posição da máquina salva');
     },
     onError: (error: Error) => {
@@ -279,6 +406,9 @@ function BlockPlanMachineEditor({
         delete next[machineId];
         return next;
       });
+      setCreateDraftRect(null);
+      createDraftRef.current = null;
+      setMapMode('idle');
       toast.success('Máquina removida do mapa');
     },
     onError: (error: Error) => {
@@ -292,20 +422,18 @@ function BlockPlanMachineEditor({
     ? editingRects[selectedMachineId]
     : undefined;
 
+  const hideSelectedSaved = mapMode === 'draw';
+
   const canConclude = useMemo(() => {
-    if (!selectedMachineId || !selectedMachine) {
-      return false;
-    }
-    const draft = editingRects[selectedMachineId];
-    if (!draft) {
+    if (!selectedMachineId || !selectedMachine || !pendingRect) {
       return false;
     }
     if (!isMachineOnMap(selectedMachine)) {
       return true;
     }
     const saved = getMachineMapRect(selectedMachine);
-    return saved !== null && !rectsEqual(draft, saved);
-  }, [editingRects, selectedMachine, selectedMachineId]);
+    return saved !== null && !rectsEqual(pendingRect, saved);
+  }, [editingRects, pendingRect, selectedMachine, selectedMachineId]);
 
   const canRemoveFromMap = useMemo(() => {
     if (!selectedMachineId || !selectedMachine) {
@@ -317,39 +445,91 @@ function BlockPlanMachineEditor({
     return isMachineOnMap(selectedMachine);
   }, [editingRects, selectedMachine, selectedMachineId]);
 
-  const showMapActions =
-    selectedMachineId !== null && (canConclude || canRemoveFromMap);
+  const resetDrawDraft = useCallback(() => {
+    drawStartRef.current = null;
+    createDraftRef.current = null;
+    setCreateDraftRect(null);
+    setIsDrawing(false);
+  }, []);
 
-  const placing =
-    selectedMachineId !== null &&
-    displayRectForMachine(
-      selectedMachine ?? {
-        id: '',
-        code: '',
-        costCenter: null,
-        positionX: null,
-        positionY: null,
-        positionWidth: null,
-        positionHeight: null,
-        expectedPiecesToday: 0,
-      },
-      selectedMachineId,
-      editingRects,
-    ) === null;
+  const cancelEdit = useCallback(() => {
+    resetDrawDraft();
+    setMapMode('idle');
+    setContextMenu(null);
+    if (selectedMachineId) {
+      setEditingRects((previous) => {
+        const next = { ...previous };
+        delete next[selectedMachineId];
+        return next;
+      });
+    }
+  }, [resetDrawDraft, selectedMachineId]);
 
-  useEffect(() => {
-    const transformer = transformerRef.current;
-    const node = selectedShapeRef.current;
-    if (!transformer) {
+  const startDraw = useCallback(() => {
+    if (!selectedMachineId) {
       return;
     }
-    if (selectedMachineId && node) {
-      transformer.nodes([node]);
-    } else {
-      transformer.nodes([]);
+    resetDrawDraft();
+    setContextMenu(null);
+    setMapMode('draw');
+    setEditingRects((previous) => {
+      const next = { ...previous };
+      delete next[selectedMachineId];
+      return next;
+    });
+  }, [resetDrawDraft, selectedMachineId]);
+
+  const startResize = useCallback(() => {
+    if (!selectedMachineId || !selectedMachine) {
+      return;
     }
-    transformer.getLayer()?.batchDraw();
-  }, [selectedMachineId, pendingRect, planRect.width, planRect.height]);
+    const base =
+      editingRects[selectedMachineId] ?? getMachineMapRect(selectedMachine);
+    if (!base) {
+      startDraw();
+      return;
+    }
+    resetDrawDraft();
+    setContextMenu(null);
+    setMapMode('resize');
+    setEditingRects((previous) => ({
+      ...previous,
+      [selectedMachineId]: base,
+    }));
+  }, [editingRects, resetDrawDraft, selectedMachine, selectedMachineId, startDraw]);
+
+  useEffect(() => {
+    if (!selectedMachineId || !selectedMachine) {
+      resetDrawDraft();
+      setMapMode('idle');
+      setContextMenu(null);
+      return;
+    }
+    resetDrawDraft();
+    setContextMenu(null);
+    if (isMachineOnMap(selectedMachine)) {
+      setMapMode('idle');
+    } else {
+      setMapMode('draw');
+    }
+    setEditingRects((previous) => {
+      if (!previous[selectedMachineId]) {
+        return previous;
+      }
+      const next = { ...previous };
+      delete next[selectedMachineId];
+      return next;
+    });
+  }, [resetDrawDraft, selectedMachine, selectedMachineId]);
+
+  useEffect(() => {
+    if (mapMode !== 'resize' || !transformerRef.current || !sectorRectRef.current) {
+      transformerRef.current?.nodes([]);
+      return;
+    }
+    transformerRef.current.nodes([sectorRectRef.current]);
+    transformerRef.current.getLayer()?.batchDraw();
+  }, [mapMode, pendingRect, planRect.width, planRect.height, pixelRatio]);
 
   const updateEditingRect = useCallback(
     (machineId: string, rect: MachineMapRect) => {
@@ -362,14 +542,13 @@ function BlockPlanMachineEditor({
   );
 
   function handleStageMouseDown(event: Konva.KonvaEventObject<MouseEvent>) {
+    setContextMenu(null);
+    if (mapMode !== 'draw' || !selectedMachineId) {
+      return;
+    }
+
     const stage = event.target.getStage();
     if (!stage || event.target !== stage) {
-      return;
-    }
-    if (!selectedMachineId || !selectedMachine) {
-      return;
-    }
-    if (displayRectForMachine(selectedMachine, selectedMachineId, editingRects)) {
       return;
     }
 
@@ -378,13 +557,16 @@ function BlockPlanMachineEditor({
       return;
     }
 
-    drawSessionRef.current = { x: pointer.x, y: pointer.y };
-    setIsDrawingRect(true);
+    const plantPoint = pointerToPlant(pointer, planRect.width, planRect.height);
+    setIsDrawing(true);
+    drawStartRef.current = plantPoint;
+    setCreateDraftRect(null);
+    createDraftRef.current = null;
   }
 
   function handleStageMouseMove(event: Konva.KonvaEventObject<MouseEvent>) {
-    const start = drawSessionRef.current;
-    if (!start || !selectedMachineId) {
+    const start = drawStartRef.current;
+    if (mapMode !== 'draw' || !isDrawing || !start || !selectedMachineId) {
       return;
     }
 
@@ -394,66 +576,185 @@ function BlockPlanMachineEditor({
       return;
     }
 
-    const rect = rectFromPointerDrag(
+    const plantPoint = pointerToPlant(pointer, planRect.width, planRect.height);
+    const next = rectFromCornerDrag(
       start,
-      pointer,
+      plantPoint,
       planRect.width,
       planRect.height,
     );
-    updateEditingRect(selectedMachineId, rect);
+    createDraftRef.current = next;
+    setCreateDraftRect(next);
   }
 
-  function finishDrawSession(event: Konva.KonvaEventObject<MouseEvent>) {
-    const start = drawSessionRef.current;
-    if (!start || !selectedMachineId) {
+  function handleStageMouseUp() {
+    if (mapMode !== 'draw' || !isDrawing || !selectedMachineId) {
       return;
     }
 
-    const stage = event.target.getStage();
-    const pointer = stage?.getPointerPosition();
-    if (pointer) {
-      const rect = rectFromPointerDrag(
-        start,
-        pointer,
-        planRect.width,
-        planRect.height,
-      );
-      updateEditingRect(selectedMachineId, rect);
+    setIsDrawing(false);
+    drawStartRef.current = null;
+
+    const draft = createDraftRef.current;
+    if (!draft) {
+      setCreateDraftRect(null);
+      toast.error('Desenhe uma área no mapa antes de salvar.');
+      return;
     }
 
-    drawSessionRef.current = null;
-    setIsDrawingRect(false);
-    event.cancelBubble = true;
+    updateEditingRect(selectedMachineId, draft);
+    setCreateDraftRect(null);
+    createDraftRef.current = null;
+    setMapMode('idle');
   }
 
-  function handleConcludePosition() {
+  function handleTransformEnd() {
+    if (mapMode !== 'resize' || !selectedMachineId || !sectorRectRef.current) {
+      return;
+    }
+    updateEditingRect(
+      selectedMachineId,
+      readRectFromNode(
+        sectorRectRef.current,
+        planRect.width,
+        planRect.height,
+      ),
+    );
+  }
+
+  function openContextMenu(
+    event: Konva.KonvaEventObject<PointerEvent>,
+  ) {
+    event.evt.preventDefault();
+    const container = containerRef.current;
+    if (!container || mapMode === 'draw') {
+      return;
+    }
+    const bounds = container.getBoundingClientRect();
+    setContextMenu({
+      x: event.evt.clientX - bounds.left,
+      y: event.evt.clientY - bounds.top,
+    });
+  }
+
+  const handleConcludePosition = useCallback(() => {
     if (!selectedMachineId || !pendingRect) {
+      toast.error('Desenhe uma área no mapa antes de salvar.');
       return;
     }
     saveMutation.mutate({ machineId: selectedMachineId, rect: pendingRect });
-  }
+  }, [pendingRect, saveMutation, selectedMachineId]);
 
-  function handleRemoveFromMap() {
+  const handleRemoveFromMap = useCallback(() => {
     if (!selectedMachineId || !selectedMachine) {
       return;
     }
 
     const hasSavedPosition = isMachineOnMap(selectedMachine);
+    cancelEdit();
     if (!hasSavedPosition) {
-      setEditingRects((previous) => {
-        const next = { ...previous };
-        delete next[selectedMachineId];
-        return next;
-      });
       return;
     }
 
     removeMutation.mutate(selectedMachineId);
-  }
+  }, [cancelEdit, removeMutation, selectedMachine, selectedMachineId]);
 
+  useEffect(() => {
+    if (!onToolbarActionsChange) {
+      return;
+    }
+    if (!selectedMachineId || !selectedMachine) {
+      onToolbarActionsChange(null);
+      return;
+    }
+    onToolbarActionsChange({
+      canConclude,
+      canRemove: canRemoveFromMap,
+      isPending: mapActionPending,
+      mapMode,
+      draftRect: pendingRect ?? createDraftRect,
+      onConclude: handleConcludePosition,
+      onRemove: handleRemoveFromMap,
+      onStartDraw: startDraw,
+      onStartResize: startResize,
+      onCancelEdit: cancelEdit,
+    });
+  }, [
+    canConclude,
+    canRemoveFromMap,
+    cancelEdit,
+    createDraftRect,
+    handleConcludePosition,
+    handleRemoveFromMap,
+    mapActionPending,
+    mapMode,
+    onToolbarActionsChange,
+    pendingRect,
+    selectedMachine,
+    selectedMachineId,
+    startDraw,
+    startResize,
+  ]);
+
+  const mappingActive = selectedMachineId !== null && selectedMachine !== null;
   const stageReady = planRect.width > 0 && planRect.height > 0;
-  const minPixelW = (MIN_MACHINE_MAP_WIDTH / 100) * planRect.width;
-  const minPixelH = (MIN_MACHINE_MAP_HEIGHT / 100) * planRect.height;
+
+  const planZoom = usePlanZoom();
+  const selectedMachineRef = useRef(selectedMachine);
+  selectedMachineRef.current = selectedMachine;
+
+  useEffect(() => {
+    if (!planZoom || !stageReady) {
+      return;
+    }
+    const machine = selectedMachineRef.current;
+    if (!machine) {
+      planZoom.resetView();
+      return;
+    }
+    const rect = getMachineMapRect(machine);
+    if (!rect) {
+      return;
+    }
+    const pixels = percentRectToPixels(rect, planRect.width, planRect.height);
+    planZoom.focusRect({
+      x: planRect.left + pixels.x,
+      y: planRect.top + pixels.y - MACHINE_LABEL_GUTTER,
+      width: pixels.width,
+      height: pixels.height + MACHINE_LABEL_GUTTER,
+    });
+    // Zoom only when the selection changes, not on every refetch of the machine.
+  }, [selectedMachineId, stageReady]);
+  const minTransformPx = MIN_MACHINE_MAP_DRAG_PX;
+
+  const paintColorsQuery = useQuery({
+    queryKey: blockPaintColorsQueryKey(block.id),
+    queryFn: () => listBlockPaintColors(block.id),
+  });
+  const demoSprayColor =
+    paintColorsQuery.data?.find(
+      (row) =>
+        row.name.trim().replace(/\s+/g, ' ').toLowerCase() ===
+        DEMO_SPRAY_COLOR_NAME,
+    )?.mapHex ?? null;
+
+  const demoSprayMachine = useMemo(() => {
+    for (const machine of machines) {
+      if (!machine.code.includes(DEMO_SPRAY_MACHINE_CODE)) {
+        continue;
+      }
+      const rect = displayRectForMachine(
+        machine,
+        selectedMachineId,
+        editingRects,
+        hideSelectedSaved,
+      );
+      if (rect) {
+        return { machine, rect };
+      }
+    }
+    return null;
+  }, [machines, selectedMachineId, editingRects, hideSelectedSaved]);
 
   return (
     <div ref={containerRef} className="relative size-full">
@@ -472,27 +773,29 @@ function BlockPlanMachineEditor({
 
       {stageReady ? (
         <div
-          data-map-interactive
+          {...(mappingActive ? { 'data-map-interactive': true } : {})}
           className={cn(
             'absolute touch-none',
-            placing || isDrawingRect
-              ? 'cursor-crosshair ring-2 ring-primary/40 ring-inset'
-              : undefined,
+            mappingActive &&
+              mapMode === 'draw' &&
+              'cursor-crosshair ring-2 ring-primary/40 ring-inset',
           )}
           style={{
             left: planRect.left,
-            top: planRect.top,
+            top: planRect.top - MACHINE_LABEL_GUTTER,
             width: planRect.width,
-            height: planRect.height,
+            height: planRect.height + MACHINE_LABEL_GUTTER,
           }}
+          onClick={() => setContextMenu(null)}
         >
           <Stage
+            key={pixelRatio}
             width={planRect.width}
-            height={planRect.height}
-            onMouseDown={handleStageMouseDown}
-            onMouseMove={handleStageMouseMove}
-            onMouseUp={finishDrawSession}
-            onMouseLeave={finishDrawSession}
+            height={planRect.height + MACHINE_LABEL_GUTTER}
+            onMouseDown={mappingActive ? handleStageMouseDown : undefined}
+            onMouseMove={mappingActive ? handleStageMouseMove : undefined}
+            onMouseUp={mappingActive ? handleStageMouseUp : undefined}
+            onMouseLeave={mappingActive ? handleStageMouseUp : undefined}
           >
             <Layer>
               {machines.map((machine) => {
@@ -500,11 +803,13 @@ function BlockPlanMachineEditor({
                   machine,
                   selectedMachineId,
                   editingRects,
+                  hideSelectedSaved,
                 );
                 if (!rect) {
                   return null;
                 }
                 const selected = machine.id === selectedMachineId;
+                const isResizeTarget = selected && mapMode === 'resize';
                 return (
                   <MachineShape
                     key={machine.id}
@@ -513,84 +818,137 @@ function BlockPlanMachineEditor({
                     planWidth={planRect.width}
                     planHeight={planRect.height}
                     selected={selected}
-                    interactive={selected}
-                    shapeRef={selected ? selectedShapeRef : undefined}
-                    onSelect={() => onSelectMachine(machine.id)}
-                    onRectChange={(next) => updateEditingRect(machine.id, next)}
+                    listening={isResizeTarget}
+                    shapeRef={isResizeTarget ? sectorRectRef : undefined}
+                    onContextMenu={
+                      selected && mapMode !== 'draw'
+                        ? openContextMenu
+                        : undefined
+                    }
+                    onTransformEnd={
+                      isResizeTarget ? handleTransformEnd : undefined
+                    }
                   />
                 );
               })}
-              <Transformer
-                ref={transformerRef}
-                rotateEnabled={false}
-                keepRatio={false}
-                ignoreStroke
-                anchorSize={12}
-                anchorCornerRadius={3}
-                anchorStroke={STROKE_SELECTED}
-                anchorFill="#ffffff"
-                borderStroke={STROKE_SELECTED}
-                borderStrokeWidth={1.5}
-                padding={2}
-                enabledAnchors={[
-                  'top-left',
-                  'top-right',
-                  'bottom-left',
-                  'bottom-right',
-                  'middle-left',
-                  'middle-right',
-                  'top-center',
-                  'bottom-center',
-                ]}
-                boundBoxFunc={(oldBox, newBox) => {
-                  if (newBox.width < minPixelW || newBox.height < minPixelH) {
-                    return oldBox;
-                  }
-                  if (
-                    newBox.x < 0 ||
-                    newBox.y < 0 ||
-                    newBox.x + newBox.width > planRect.width ||
-                    newBox.y + newBox.height > planRect.height
-                  ) {
-                    return oldBox;
-                  }
-                  return newBox;
-                }}
-              />
+
+              {demoSprayMachine && demoSprayColor ? (
+                <MachineSprayPaintDemo
+                  machine={demoSprayMachine.machine}
+                  rect={demoSprayMachine.rect}
+                  planWidth={planRect.width}
+                  planHeight={planRect.height}
+                  color={demoSprayColor}
+                />
+              ) : null}
+
+              {mapMode === 'draw' && createDraftRect && selectedMachine ? (
+                <MachineShape
+                  key="create-draft"
+                  machine={selectedMachine}
+                  rect={createDraftRect}
+                  planWidth={planRect.width}
+                  planHeight={planRect.height}
+                  selected
+                  dashed
+                />
+              ) : null}
+
+              {mapMode === 'resize' ? (
+                <Transformer
+                  ref={transformerRef}
+                  rotateEnabled={false}
+                  keepRatio={false}
+                  ignoreStroke
+                  anchorSize={12}
+                  boundBoxFunc={(oldBox, newBox) => {
+                    if (
+                      newBox.width < minTransformPx ||
+                      newBox.height < minTransformPx
+                    ) {
+                      return oldBox;
+                    }
+                    if (
+                      newBox.x < 0 ||
+                      newBox.y < MACHINE_LABEL_GUTTER ||
+                      newBox.x + newBox.width > planRect.width ||
+                      newBox.y + newBox.height >
+                        planRect.height + MACHINE_LABEL_GUTTER
+                    ) {
+                      return oldBox;
+                    }
+                    return newBox;
+                  }}
+                />
+              ) : null}
             </Layer>
           </Stage>
-        </div>
-      ) : null}
 
-      {placing ? (
-        <p className="pointer-events-none absolute bottom-14 right-2 z-10 max-w-[min(100%,16rem)] rounded-lg bg-card/95 px-3 py-1.5 text-right text-xs text-muted-foreground shadow-sm ring-1 ring-foreground/10">
-          Clique e arraste na planta para desenhar o tamanho da máquina
-        </p>
-      ) : null}
+          <div className="pointer-events-none absolute inset-0">
+            {machines.map((machine) => {
+              const rect = displayRectForMachine(
+                machine,
+                selectedMachineId,
+                editingRects,
+                hideSelectedSaved,
+              );
+              if (!rect) {
+                return null;
+              }
+              const box = renderBoxPixels(
+                rect,
+                planRect.width,
+                planRect.height,
+              );
+              return (
+                <span
+                  key={machine.id}
+                  className="absolute rounded-[2px] px-[3px] font-bold whitespace-nowrap"
+                  style={{
+                    left: box.x,
+                    top: box.y - MACHINE_LABEL_GAP - MACHINE_LABEL_HEIGHT,
+                    height: MACHINE_LABEL_HEIGHT,
+                    lineHeight: `${MACHINE_LABEL_HEIGHT}px`,
+                    fontSize: MACHINE_LABEL_FONT_SIZE,
+                    color: MACHINE_LABEL_TEXT,
+                    background: MACHINE_LABEL_TAG_FILL,
+                  }}
+                >
+                  {machine.code}
+                </span>
+              );
+            })}
+          </div>
 
-      {showMapActions ? (
-        <div className="absolute right-2 bottom-2 z-10 flex flex-wrap justify-end gap-2">
-          {canRemoveFromMap ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={mapActionPending}
-              onClick={handleRemoveFromMap}
+          {contextMenu ? (
+            <div
+              className="absolute z-30 min-w-44 rounded-md border border-border bg-card p-1 shadow-lg"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={(event) => event.stopPropagation()}
             >
-              {removeMutation.isPending ? 'Removendo…' : 'Remover do mapa'}
-            </Button>
+              <button
+                type="button"
+                className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => {
+                  startResize();
+                  setContextMenu(null);
+                }}
+              >
+                Redimensionar área
+              </button>
+              <button
+                type="button"
+                className="flex w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => {
+                  startDraw();
+                  setContextMenu(null);
+                }}
+              >
+                Desenhar nova área
+              </button>
+            </div>
           ) : null}
-          {canConclude ? (
-            <Button
-              type="button"
-              size="sm"
-              disabled={mapActionPending}
-              onClick={handleConcludePosition}
-            >
-              {saveMutation.isPending ? 'Salvando…' : 'Concluir posição'}
-            </Button>
-          ) : null}
+
         </div>
       ) : null}
     </div>

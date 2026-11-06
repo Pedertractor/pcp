@@ -19,7 +19,7 @@ export const planningSyncResultSchema = z.object({
   costCenters: z.array(z.string()),
   rowsRead: z.number(),
   rowsMatched: z.number(),
-  linesCreated: z.number(),
+  rowsSkippedByStatus: z.number(),
   machinesCreated: z.number(),
   ordersCreated: z.number(),
   ordersUpdated: z.number(),

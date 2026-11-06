@@ -1,31 +1,45 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  ArrowUpDown,
   CalendarDays,
+  Check,
   ClipboardList,
   Cog,
   ImageOff,
   ImageUp,
   Loader2Icon,
+  MapPin,
   MapPinOff,
   Package,
   Paintbrush,
   Pencil,
   Receipt,
-  Rows3,
   Settings,
+  Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { BlockLinkPaintColorsButton } from '@/components/blocks/block-link-paint-colors-dialog';
 import { BlockCostCentersDialog } from '@/components/blocks/block-cost-centers-dialog';
 import { BlockMapSettingsDialog } from '@/components/blocks/block-map-settings-dialog';
-import { BlockPlanMachineEditor } from '@/components/blocks/block-plan-machine-editor';
+import {
+  BlockPlanMachineEditor,
+  type MachineMapToolbarActions,
+} from '@/components/blocks/block-plan-machine-editor';
 import { PlanZoomViewport } from '@/components/blocks/plan-zoom-viewport';
 import { isMachineOnMap } from '@/lib/machine-map';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Tooltip,
   TooltipContent,
@@ -74,7 +88,7 @@ function TodayBadge() {
   return (
     <time
       dateTime={now.toLocaleDateString('sv-SE')}
-      className="absolute right-3 bottom-3 z-10 inline-flex items-center gap-2 rounded-lg border-2 border-primary bg-card px-3 py-1.5 text-sm font-semibold capitalize sm:right-4 sm:bottom-4"
+      className="absolute right-3 bottom-3 z-10 inline-flex items-center gap-2 rounded-lg  border-primary bg-card px-3 py-1.5 text-sm font-semibold capitalize sm:right-4 sm:bottom-4"
     >
       <CalendarDays className="size-4 text-brand" aria-hidden />
       {todayFormatter.format(now)}
@@ -83,30 +97,187 @@ function TodayBadge() {
 }
 
 const piecesFormatter = new Intl.NumberFormat('pt-BR');
+const areaFormatter = new Intl.NumberFormat('pt-BR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+type BlockMachineItem = BlockDetail['machines'][number];
+
+type MachineSort =
+  | 'code-asc'
+  | 'code-desc'
+  | 'pieces-desc'
+  | 'pieces-asc'
+  | 'on-map-first'
+  | 'off-map-first';
+
+const MACHINE_SORT_OPTIONS: { value: MachineSort; label: string }[] = [
+  { value: 'code-asc', label: 'Código (crescente)' },
+  { value: 'code-desc', label: 'Código (decrescente)' },
+  { value: 'pieces-desc', label: 'Mais peças hoje' },
+  { value: 'pieces-asc', label: 'Menos peças hoje' },
+  { value: 'on-map-first', label: 'No mapa primeiro' },
+  { value: 'off-map-first', label: 'Sem posição primeiro' },
+];
+
+function byCode(a: BlockMachineItem, b: BlockMachineItem) {
+  return a.code.localeCompare(b.code, 'pt-BR', { numeric: true });
+}
+
+function onMapRank(machine: BlockMachineItem) {
+  return isMachineOnMap(machine) ? 0 : 1;
+}
+
+const MACHINE_SORTERS: Record<
+  MachineSort,
+  (a: BlockMachineItem, b: BlockMachineItem) => number
+> = {
+  'code-asc': byCode,
+  'code-desc': (a, b) => byCode(b, a),
+  'pieces-desc': (a, b) =>
+    b.expectedPiecesToday - a.expectedPiecesToday || byCode(a, b),
+  'pieces-asc': (a, b) =>
+    a.expectedPiecesToday - b.expectedPiecesToday || byCode(a, b),
+  'on-map-first': (a, b) => onMapRank(a) - onMapRank(b) || byCode(a, b),
+  'off-map-first': (a, b) => onMapRank(b) - onMapRank(a) || byCode(a, b),
+};
+
+function MachineMapActionsBelow({
+  machine,
+  mapToolbarActions,
+}: {
+  machine: BlockDetail['machines'][number];
+  mapToolbarActions: MachineMapToolbarActions | null;
+}) {
+  const onMap = isMachineOnMap(machine);
+  const mapMode =
+    mapToolbarActions?.mapMode ?? (onMap ? 'idle' : 'draw');
+
+  if (!mapToolbarActions) {
+    return (
+      <p className="text-xs text-muted-foreground">Carregando controles…</p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {mapMode === 'draw' ? (
+        <p className="text-xs leading-snug text-muted-foreground">
+          Clique e arraste sobre a planta para desenhar a área (como no mapa de
+          setores).
+        </p>
+      ) : mapMode === 'resize' ? (
+        <p className="text-xs leading-snug text-muted-foreground">
+          Arraste as alças no mapa ou use o menu do botão direito na área.
+        </p>
+      ) : (
+        <p className="text-xs leading-snug text-muted-foreground">
+          Desenhe a área ou redimensione a posição já salva.
+        </p>
+      )}
+      {mapToolbarActions.draftRect ? (
+        <p className="text-xs tabular-nums text-muted-foreground">
+          Área: {mapToolbarActions.draftRect.width.toFixed(1)}% ×{' '}
+          {mapToolbarActions.draftRect.height.toFixed(1)}%
+        </p>
+      ) : null}
+      <div className="flex w-full flex-col gap-1.5">
+        <Button
+          type="button"
+          variant={mapToolbarActions.mapMode === 'draw' ? 'default' : 'outline'}
+          size="sm"
+          className="w-full"
+          title="Desenhar área"
+          disabled={
+            mapToolbarActions.isPending ||
+            mapToolbarActions.mapMode === 'resize'
+          }
+          onClick={mapToolbarActions.onStartDraw}
+        >
+          <span className="truncate">Desenhar área</span>
+        </Button>
+        <Button
+          type="button"
+          variant={
+            mapToolbarActions.mapMode === 'resize' ? 'default' : 'outline'
+          }
+          size="sm"
+          className="w-full"
+          title="Redimensionar"
+          disabled={
+            mapToolbarActions.isPending ||
+            mapToolbarActions.mapMode === 'draw' ||
+            !onMap
+          }
+          onClick={mapToolbarActions.onStartResize}
+        >
+          <Pencil />
+          <span className="truncate">Redimensionar</span>
+        </Button>
+        {mapToolbarActions.mapMode !== 'idle' ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full"
+            title="Cancelar"
+            disabled={mapToolbarActions.isPending}
+            onClick={mapToolbarActions.onCancelEdit}
+          >
+            <span className="truncate">Cancelar</span>
+          </Button>
+        ) : null}
+        {mapToolbarActions.canRemove ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full"
+            title="Remover"
+            disabled={mapToolbarActions.isPending}
+            onClick={mapToolbarActions.onRemove}
+          >
+            <Trash2 />
+            <span className="truncate">Remover</span>
+          </Button>
+        ) : null}
+        {mapToolbarActions.canConclude ? (
+          <Button
+            type="button"
+            size="sm"
+            className="w-full"
+            title="Concluir posição"
+            disabled={mapToolbarActions.isPending}
+            onClick={mapToolbarActions.onConclude}
+          >
+            <Check />
+            <span className="truncate">Concluir posição</span>
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function BlockMachinesColumn({
   block,
   selectedMachineId,
   onSelectMachine,
+  mapToolbarActions,
+  onOpenProductionOrders,
 }: {
   block: BlockDetail;
   selectedMachineId: string | null;
   onSelectMachine: (machineId: string | null) => void;
+  mapToolbarActions: MachineMapToolbarActions | null;
+  onOpenProductionOrders: () => void;
 }) {
-  const machines = useMemo(() => {
-    const byId = new Map<
-      string,
-      BlockDetail['lines'][number]['machines'][number] & { lineCode: string }
-    >();
-    for (const line of block.lines) {
-      for (const machine of line.machines) {
-        if (!byId.has(machine.id)) {
-          byId.set(machine.id, { ...machine, lineCode: line.code });
-        }
-      }
-    }
-    return [...byId.values()].sort((a, b) => a.code.localeCompare(b.code));
-  }, [block.lines]);
+  const [sortBy, setSortBy] = useState<MachineSort>('code-asc');
+  const machines = useMemo(
+    () => [...block.machines].sort(MACHINE_SORTERS[sortBy]),
+    [block.machines, sortBy],
+  );
 
   return (
     <aside className="flex min-h-0 min-w-0 shrink-0 flex-col gap-3 lg:h-full">
@@ -119,6 +290,30 @@ function BlockMachinesColumn({
           <span className="text-muted-foreground">{machines.length}</span>
         </h2>
 
+        {machines.length > 0 ? (
+          <div className="flex items-center gap-2 pt-3">
+            <ArrowUpDown
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+            <Select
+              value={sortBy}
+              onValueChange={(value) => setSortBy(value as MachineSort)}
+            >
+              <SelectTrigger aria-label="Ordenar máquinas" className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" className="z-[110]">
+                {MACHINE_SORT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
         {machines.length === 0 ? (
           <p className="pt-3 text-sm text-muted-foreground">
             Nenhuma máquina ainda. Elas são criadas pela sincronização das OFs.
@@ -126,10 +321,16 @@ function BlockMachinesColumn({
         ) : (
           <ul className="-mr-2 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pt-3 pr-2">
             {machines.map((machine) => {
-              const onMap = isMachineOnMap(machine);
               const selected = machine.id === selectedMachineId;
+              const onMap = isMachineOnMap(machine);
               return (
-                <li key={machine.id}>
+                <li
+                  key={machine.id}
+                  className={cn(
+                    selected &&
+                      'rounded-lg border border-primary/30 bg-primary/5 p-1',
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() =>
@@ -142,28 +343,51 @@ function BlockMachinesColumn({
                         : 'bg-muted hover:bg-muted/80',
                     )}
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-1.5 truncate font-medium">
-                        {!onMap ? (
-                          <MapPinOff
-                            className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
-                            aria-hidden
+                        {onMap ? (
+                          <MapPin
+                            className="size-3.5 shrink-0 text-brand"
+                            aria-label="Com posição no mapa"
                           />
-                        ) : null}
+                        ) : (
+                          <MapPinOff
+                            className="size-3.5 shrink-0 text-muted-foreground"
+                            aria-label="Sem posição no mapa"
+                          />
+                        )}
                         <span className="truncate">{machine.code}</span>
                       </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        Linha {machine.lineCode}
-                        {!onMap ? ' · sem posição no mapa' : ''}
-                      </p>
                     </div>
-                    <span
-                      className="shrink-0 text-xs font-semibold tabular-nums"
-                      title="Peças esperadas hoje"
-                    >
-                      {piecesFormatter.format(machine.expectedPiecesToday)} pç
+                    <span className="flex shrink-0 flex-col items-end text-xs tabular-nums">
+                      <span
+                        className="font-semibold"
+                        title="Peças: produzidas hoje / esperadas (processos finalizados hoje)"
+                      >
+                        {piecesFormatter.format(machine.producedPiecesToday)} /{' '}
+                        {piecesFormatter.format(machine.expectedPiecesToday)} pç
+                      </span>
+                      <span
+                        className="text-muted-foreground"
+                        title="m²: produzido hoje / esperado (área × qtd. do processo ou da OF)"
+                      >
+                        {areaFormatter.format(machine.producedAreaToday)} /{' '}
+                        {areaFormatter.format(machine.expectedAreaToday)} m²
+                      </span>
                     </span>
                   </button>
+                  {selected ? (
+                    <div
+                      className="mt-2 space-y-2 border-t border-primary/20 px-2 pb-2 pt-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      <MachineMapActionsBelow
+                        machine={machine}
+                        mapToolbarActions={mapToolbarActions}
+                      />
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
@@ -171,15 +395,31 @@ function BlockMachinesColumn({
         )}
       </section>
 
-      <section className="shrink-0 rounded-2xl border-2 border-primary bg-card p-4">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Package className="size-4 text-brand" aria-hidden />
-          Peças esperadas hoje
-        </p>
-        <p className="mt-2 text-3xl font-bold tracking-tight tabular-nums">
-          {piecesFormatter.format(block.expectedPiecesToday)}
-        </p>
-      </section>
+      <button
+        type="button"
+        onClick={onOpenProductionOrders}
+        title="Ver OFs do bloco"
+        className="shrink-0 rounded-2xl border-2 border-primary bg-primary p-4 text-left transition-opacity hover:opacity-90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        <span className="flex gap-2 text-sm text-white">
+          <Package className="size-4 text-white" aria-hidden />
+          Produzido / planejado
+        </span>
+        <span
+          className="mt-2 block text-2xl font-bold leading-tight tracking-tight tabular-nums text-white sm:text-3xl"
+          title="Peças: apontadas em processos finalizados hoje / planejamento atual do bloco"
+        >
+          {piecesFormatter.format(block.producedPiecesToday)} /{' '}
+          {piecesFormatter.format(block.expectedPiecesToday)} pç
+        </span>
+        <span
+          className="mt-1 block text-base font-semibold tabular-nums text-white/90 sm:text-lg"
+          title="m²: soma (m² por peça × qtd. do processo) para processos finalizados hoje / esperado do planejamento"
+        >
+          {areaFormatter.format(block.producedAreaToday)} /{' '}
+          {areaFormatter.format(block.expectedAreaToday)} m²
+        </span>
+      </button>
     </aside>
   );
 }
@@ -188,12 +428,12 @@ function BlockPlanView({
   block,
   onConfigure,
   selectedMachineId,
-  onSelectMachine,
+  onToolbarActionsChange,
 }: {
   block: BlockDetail;
   onConfigure: () => void;
   selectedMachineId: string | null;
-  onSelectMachine: (machineId: string | null) => void;
+  onToolbarActionsChange: (actions: MachineMapToolbarActions | null) => void;
 }) {
   const planImage = useBlockPlanImage(block.blockPlanImage);
 
@@ -224,7 +464,7 @@ function BlockPlanView({
           block={block}
           imageSrc={planImage.src}
           selectedMachineId={selectedMachineId}
-          onSelectMachine={onSelectMachine}
+          onToolbarActionsChange={onToolbarActionsChange}
         />
       </PlanZoomViewport>
     );
@@ -251,6 +491,8 @@ export function BlockDetailPage() {
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(
     null,
   );
+  const [mapToolbarActions, setMapToolbarActions] =
+    useState<MachineMapToolbarActions | null>(null);
 
   const blockQuery = useQuery({
     queryKey: blockDetailQueryKey(blockId),
@@ -317,7 +559,6 @@ export function BlockDetailPage() {
             label="Setor"
             value={BLOCK_SECTOR_LABELS[block.sector]}
           />
-          <BlockInfoItem icon={Rows3} label="Linhas" value={block.linesCount} />
           <BlockInfoItem
             icon={Cog}
             label="Máquinas"
@@ -360,33 +601,13 @@ export function BlockDetailPage() {
               ))}
             </ul>
           </section>
-
-          <section className="grid gap-3">
-            <h2 className="flex items-center gap-2 text-sm font-medium">
-              <Rows3 className="size-4 text-muted-foreground" />
-              Linhas
-            </h2>
-            {block.lines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                As linhas e máquinas serão criadas pela sincronização das OFs.
-              </p>
-            ) : (
-              <ul className="grid gap-2">
-                {block.lines.map((line) => (
-                  <li
-                    key={line.id}
-                    className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-sm"
-                  >
-                    <span className="font-medium">{line.code}</span>
-                    <span className="text-muted-foreground">
-                      {line.machines.length} máquinas
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
         </div>
+
+        {block.sector === 'PAINT' ? (
+          <div className="mt-4 shrink-0 border-t border-border/60 pt-4">
+            <BlockLinkPaintColorsButton block={block} prominent />
+          </div>
+        ) : null}
       </aside>
 
       <main className="relative flex min-h-[60dvh] min-w-0 flex-col rounded-2xl border border-border/60 bg-card p-3 sm:p-4 lg:h-full lg:min-h-0">
@@ -414,7 +635,7 @@ export function BlockDetailPage() {
             block={block}
             onConfigure={() => setSettingsOpen(true)}
             selectedMachineId={selectedMachineId}
-            onSelectMachine={setSelectedMachineId}
+            onToolbarActionsChange={setMapToolbarActions}
           />
         </div>
         <TodayBadge />
@@ -424,6 +645,10 @@ export function BlockDetailPage() {
         block={block}
         selectedMachineId={selectedMachineId}
         onSelectMachine={setSelectedMachineId}
+        mapToolbarActions={mapToolbarActions}
+        onOpenProductionOrders={() =>
+          navigate(`${BLOCKS_PATH}/${block.id}/ofs`)
+        }
       />
 
       <BlockMapSettingsDialog

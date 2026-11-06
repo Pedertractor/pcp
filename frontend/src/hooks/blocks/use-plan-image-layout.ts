@@ -23,12 +23,13 @@ export function usePlanImageLayout(
       return;
     }
 
+    // clientWidth/Height ignore CSS transforms; getBoundingClientRect would
+    // return the zoomed size when the plan sits inside PlanZoomViewport.
     function measure() {
-      const bounds = element!.getBoundingClientRect();
       setRect(
         computeObjectContainRect(
-          bounds.width,
-          bounds.height,
+          element!.clientWidth,
+          element!.clientHeight,
           imageNaturalWidth,
           imageNaturalHeight,
         ),

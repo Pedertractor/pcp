@@ -23,7 +23,6 @@ export const blockSummarySchema = z.object({
   name: z.string(),
   sector: z.enum(BlockSector),
   costCenters: z.array(costCenterSchema),
-  linesCount: z.number(),
   machinesCount: z.number(),
   productionOrdersCount: z.number(),
   createdAt: z.string(),
@@ -43,18 +42,21 @@ const machineSchema = z.object({
   positionWidth: z.number().nullable(),
   positionHeight: z.number().nullable(),
   expectedPiecesToday: z.number(),
-});
-
-const lineSchema = z.object({
-  id: z.string(),
-  code: z.string(),
-  machines: z.array(machineSchema),
+  /** m²: soma de área da peça * quantidade. */
+  expectedAreaToday: z.number(),
+  /** Peças apontadas em processos finalizados no dia (consulta de processos). */
+  producedPiecesToday: z.number(),
+  /** m² produzido: soma (m² por peça × quantidade efetiva do processo). */
+  producedAreaToday: z.number(),
 });
 
 export const blockDetailSchema = blockSummarySchema.extend({
   blockPlanImage: blockPlanImageSchema.nullable(),
-  lines: z.array(lineSchema),
+  machines: z.array(machineSchema),
   expectedPiecesToday: z.number(),
+  expectedAreaToday: z.number(),
+  producedPiecesToday: z.number(),
+  producedAreaToday: z.number(),
 });
 
 export type BlockDetail = z.infer<typeof blockDetailSchema>;
