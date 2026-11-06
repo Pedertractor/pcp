@@ -670,7 +670,7 @@ export function BlockDetailPage() {
       >
         {/* Aba (“dedo”): a borda sobe, vira à direita e fecha no canto do card. */}
         <div className="relative z-10 flex shrink-0 justify-end">
-          <div className="relative mb-[-1px] rounded-t-2xl border border-b-0 border-border/60 bg-card px-3 py-2 sm:px-4">
+          <div className="relative mb-[-1px] rounded-t-2xl border border-b-0 border-border/60 bg-card px-3 py-2 sm:px-4 bg-primary">
             <MapDateTab />
           </div>
         </div>

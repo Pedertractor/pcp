@@ -74,12 +74,42 @@ const STROKE = 'hsl(142 76% 36%)';
 const STROKE_SELECTED = 'hsl(142 76% 28%)';
 const FILL = 'hsla(142, 76%, 36%, 0.22)';
 const FILL_SELECTED = 'hsla(142, 76%, 36%, 0.35)';
-const MACHINE_LABEL_FONT_SIZE = 5;
-const MACHINE_LABEL_HEIGHT = 4;
+const PAINT_MARK_FILL_ALPHA = 0.1;
+const PAINT_MARK_FILL_SELECTED_ALPHA = 0.16;
+const PAINT_MARK_STROKE_ALPHA = 0.55;
+const PAINT_MARK_STROKE_SELECTED_ALPHA = 0.8;
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const raw = hex.replace('#', '').trim();
+  const full =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((ch) => ch + ch)
+          .join('')
+      : raw;
+  if (full.length !== 6) {
+    return null;
+  }
+  const n = Number.parseInt(full, 16);
+  if (Number.isNaN(n)) {
+    return null;
+  }
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) {
+    return `rgba(148, 163, 184, ${alpha})`;
+  }
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+const MACHINE_LABEL_HEIGHT = 5;
 const MACHINE_LABEL_GAP = 1;
 const MACHINE_LABEL_GUTTER = MACHINE_LABEL_HEIGHT + MACHINE_LABEL_GAP + 1;
-const MACHINE_LABEL_TEXT = 'hsl(142, 72%, 14%)';
-const MACHINE_LABEL_TAG_FILL = 'rgba(255, 255, 255, 0.92)';
+const MACHINE_LABEL_INSET = 1.5;
 
 function renderBoxPixels(
   rect: MachineMapRect,
@@ -279,6 +309,7 @@ type MachineShapeProps = {
   selected: boolean;
   dashed?: boolean;
   listening?: boolean;
+  paintHex?: string | null;
   shapeRef?: RefObject<Konva.Rect | null>;
   onContextMenu?: (event: Konva.KonvaEventObject<PointerEvent>) => void;
   onTransformEnd?: () => void;
@@ -292,11 +323,30 @@ function MachineShape({
   selected,
   dashed = false,
   listening = false,
+  paintHex = null,
   shapeRef,
   onContextMenu,
   onTransformEnd,
 }: MachineShapeProps) {
   const box = renderBoxPixels(rect, planWidth, planHeight);
+  const fill = dashed
+    ? 'transparent'
+    : paintHex
+      ? hexToRgba(
+          paintHex,
+          selected ? PAINT_MARK_FILL_SELECTED_ALPHA : PAINT_MARK_FILL_ALPHA,
+        )
+      : selected
+        ? FILL_SELECTED
+        : FILL;
+  const stroke = paintHex
+    ? hexToRgba(
+        paintHex,
+        selected ? PAINT_MARK_STROKE_SELECTED_ALPHA : PAINT_MARK_STROKE_ALPHA,
+      )
+    : selected
+      ? STROKE_SELECTED
+      : STROKE;
 
   return (
     <Group listening={listening} name={machine.code}>
@@ -306,8 +356,8 @@ function MachineShape({
         y={box.y}
         width={box.width}
         height={box.height}
-        fill={dashed ? 'transparent' : selected ? FILL_SELECTED : FILL}
-        stroke={selected ? STROKE_SELECTED : STROKE}
+        fill={fill}
+        stroke={stroke}
         strokeWidth={selected ? 1.25 : 1}
         dash={dashed ? [10, 6] : undefined}
         opacity={dashed ? 1 : selected ? 1 : 0.9}
@@ -839,6 +889,8 @@ export function BlockPlanMachineEditor({
                 }
                 const selected = machine.id === selectedMachineId;
                 const isResizeTarget = selected && mapMode === 'resize';
+                const isSprayTarget =
+                  demoSprayMachine?.machine.id === machine.id;
                 return (
                   <MachineShape
                     key={machine.id}
@@ -847,6 +899,7 @@ export function BlockPlanMachineEditor({
                     planWidth={planRect.width}
                     planHeight={planRect.height}
                     selected={selected}
+                    paintHex={isSprayTarget ? demoSprayColor : null}
                     listening={isResizeTarget}
                     shapeRef={isResizeTarget ? sectorRectRef : undefined}
                     onContextMenu={
@@ -929,18 +982,23 @@ export function BlockPlanMachineEditor({
                 planRect.width,
                 planRect.height,
               );
+              const shortSide = Math.min(box.width, box.height);
+              const labelFont = Math.max(3, Math.min(8, shortSide * 0.11));
+              const labelPadY = Math.max(1, labelFont * 0.18);
+              const labelPadX = Math.max(2, labelFont * 0.4);
               return (
                 <span
                   key={machine.id}
-                  className="absolute rounded-[2px] px-[3px] font-bold whitespace-nowrap"
+                  className="absolute font-bold tabular-nums whitespace-nowrap"
                   style={{
-                    left: box.x,
-                    top: box.y - MACHINE_LABEL_GAP - MACHINE_LABEL_HEIGHT,
-                    height: MACHINE_LABEL_HEIGHT,
-                    lineHeight: `${MACHINE_LABEL_HEIGHT}px`,
-                    fontSize: MACHINE_LABEL_FONT_SIZE,
-                    color: MACHINE_LABEL_TEXT,
-                    background: MACHINE_LABEL_TAG_FILL,
+                    left: box.x + MACHINE_LABEL_INSET,
+                    top: box.y + box.height - MACHINE_LABEL_INSET,
+                    fontSize: labelFont,
+                    lineHeight: 1,
+                    padding: `${labelPadY}px ${labelPadX}px`,
+                    color: '#1c1c1c',
+                    background: '#ffffff',
+                    transform: 'translateY(-100%)',
                   }}
                 >
                   {machine.code}
