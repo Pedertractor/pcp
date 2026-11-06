@@ -47,6 +47,20 @@ function normalizeStatusDate(value: string | null): string {
   return (value ?? '').replace(/^[.\s]+/, '').trim().toUpperCase();
 }
 
+function normalizedHexForSwatch(raw: string | null): string | null {
+  if (raw === null) {
+    return null;
+  }
+  const s = raw.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(s)) {
+    return s.toUpperCase();
+  }
+  if (/^[0-9A-Fa-f]{6}$/.test(s)) {
+    return `#${s.toUpperCase()}`;
+  }
+  return null;
+}
+
 const DEFAULT_STATUS_DATE_FILTER = ['HOJE', 'NO ATRASO'] as const;
 
 function sameStringSet(a: readonly string[], b: readonly string[]): boolean {
@@ -84,6 +98,8 @@ export function BlockProductionOrdersPage() {
     queryFn: () => getBlock(blockId),
     enabled: blockId.length > 0,
   });
+
+  const isPaintBlock = blockQuery.data?.sector === 'PAINT';
 
   const ordersQuery = useQuery({
     queryKey: blockProductionOrdersQueryKey(blockId),
@@ -371,7 +387,28 @@ export function BlockProductionOrdersPage() {
                     <TableCell className="font-medium">{order.ofNumber}</TableCell>
                     <TableCell>{order.partCode}</TableCell>
                     <TableCell>{order.machineCode ?? '—'}</TableCell>
-                    <TableCell>{order.colorName ?? '—'}</TableCell>
+                    <TableCell>
+                      <span className="flex min-w-0 items-center gap-2">
+                        {isPaintBlock
+                          ? (() => {
+                              const hex = normalizedHexForSwatch(
+                                order.colorMapHex,
+                              );
+                              return hex ? (
+                                <span
+                                  className="size-3.5 shrink-0 rounded-sm border border-border/80 shadow-sm"
+                                  style={{ backgroundColor: hex }}
+                                  title={hex}
+                                  aria-hidden
+                                />
+                              ) : null;
+                            })()
+                          : null}
+                        <span className="min-w-0 truncate">
+                          {order.colorName ?? '—'}
+                        </span>
+                      </span>
+                    </TableCell>
                     <TableCell>{order.operation ?? '—'}</TableCell>
                     <TableCell>{order.costCenter ?? '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">

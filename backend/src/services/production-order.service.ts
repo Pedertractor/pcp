@@ -30,7 +30,16 @@ export class ProductionOrderService {
         status: true,
         machine: { select: { code: true } },
         syncDate: true,
-        color: { select: { name: true } },
+        color: {
+          select: {
+            name: true,
+            blockLinks: {
+              where: { blockId },
+              take: 1,
+              select: { mapHex: true },
+            },
+          },
+        },
       },
     });
 
@@ -38,6 +47,7 @@ export class ProductionOrderService {
       ...order,
       machineCode: machine?.code ?? null,
       colorName: color?.name ?? null,
+      colorMapHex: color?.blockLinks[0]?.mapHex ?? null,
       totalArea: Math.round((order.area ?? 0) * order.quantity * 1000) / 1000,
       syncDate: toLocalDateKey(syncDate),
     }));

@@ -7,6 +7,8 @@ export const blockProductionOrderItemSchema = z.object({
   partCode: z.string(),
   machineCode: z.string().nullable(),
   colorName: z.string().nullable(),
+  /** Hex do mapa (#RRGGBB) quando a cor está vinculada ao bloco com mapHex. */
+  colorMapHex: z.string().nullable(),
   operation: z.string().nullable(),
   costCenter: z.string().nullable(),
   quantity: z.number(),

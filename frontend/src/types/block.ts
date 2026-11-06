@@ -89,6 +89,8 @@ export type BlockProductionOrder = {
   partCode: string;
   machineCode: string | null;
   colorName: string | null;
+  /** Cor no mapa do bloco (#RRGGBB); só preenchido quando há vínculo com mapHex. */
+  colorMapHex: string | null;
   operation: string | null;
   costCenter: string | null;
   quantity: number;
