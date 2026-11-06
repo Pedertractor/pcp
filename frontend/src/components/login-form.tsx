@@ -3,6 +3,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 import { LoginFactoryScene } from '@/components/auth/login-factory-scene';
 import { ThemeToggle } from '@/components/theme-toggle';
+import logoSystem from '@/public/logo-system.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -74,22 +75,36 @@ export function LoginForm({
   const greeting = getGreeting();
 
   return (
-    <div className="relative grid min-h-dvh bg-background lg:grid-cols-2">
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-        <p className="text-sm text-muted-foreground">
+    <div className="relative flex min-h-dvh min-h-[100dvh] flex-col bg-background lg:grid lg:min-h-dvh lg:grid-cols-2 lg:flex-none">
+      <div className="absolute top-3 left-3 z-20 lg:hidden">
+        <div
+          className="flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-brand-muted dark:bg-[#e8f6df]"
+          aria-hidden
+        >
+          <img
+            src={logoSystem}
+            alt=""
+            className="size-6 object-contain"
+          />
+        </div>
+      </div>
+
+      <div className="absolute top-3 right-3 z-20 flex max-w-[calc(100%-5rem)] items-start justify-end gap-2 sm:top-4 sm:right-4 sm:max-w-[calc(100%-1.5rem)] lg:max-w-[calc(100%-1.5rem)]">
+        <p className="hidden text-sm text-muted-foreground sm:block">
           <span className="font-medium text-foreground">{greeting}</span>
           <span className="mx-2" aria-hidden>
             |
           </span>
           Powered by automation team
         </p>
+        <p className="text-xs text-muted-foreground sm:hidden">
+          <span className="font-medium text-foreground">{greeting}</span>
+        </p>
         <ThemeToggle />
       </div>
-      
-      <p className="pointer-events-none absolute inset-x-0 bottom-5 z-10 text-center text-sm text-muted-foreground">
-      Planejamento e Controle da Produção - Pedertractor & TractorComponents
-      </p>
-      <div className="flex items-center justify-center px-6 py-16 sm:px-10">
+
+      <div className="flex flex-1 flex-col lg:contents">
+      <div className="order-1 flex flex-1 items-center justify-center px-4 py-20 sm:px-6 sm:py-16 lg:order-none lg:py-16">
         <form
           className="flex w-full max-w-md flex-col gap-6"
           onSubmit={handleSubmit}
@@ -257,9 +272,31 @@ export function LoginForm({
         </form>
       </div>
 
-      <div className="flex min-h-[42vh] items-center justify-center bg-background lg:min-h-dvh">
-        <LoginFactoryScene />
+      <div className="order-2 hidden min-h-0 shrink-0 flex-col items-center justify-center overflow-hidden bg-background px-4 py-6 lg:order-none lg:flex lg:min-h-dvh lg:min-h-0 lg:flex-1 lg:py-0">
+        <div className="w-full">
+          <LoginFactoryScene />
+        </div>
       </div>
+      </div>
+
+      <footer className="relative z-10 order-3 flex flex-col gap-3 border-t border-border/50 bg-background/95 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 sm:flex-row sm:items-end sm:justify-between sm:gap-4 lg:absolute lg:bottom-0 lg:left-0 lg:right-0 lg:border-t-0 lg:bg-transparent lg:px-6 lg:pb-6 lg:pt-0 lg:backdrop-blur-none">
+        <p className="pointer-events-none flex-1 text-center text-xs leading-snug text-muted-foreground sm:text-sm lg:text-center">
+          Planejamento e Controle da Produção — Pedertractor &amp;
+          TractorComponents
+        </p>
+        <div className="hidden shrink-0 justify-end lg:flex">
+          <div
+            className="flex aspect-square size-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-brand-muted dark:bg-[#e8f6df] sm:size-11"
+            aria-hidden
+          >
+            <img
+              src={logoSystem}
+              alt=""
+              className="size-[2.75rem] object-contain sm:size-12"
+            />
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
