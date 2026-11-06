@@ -52,6 +52,33 @@ import { cn } from '@/lib/utils';
 
 const BLOCKS_PATH = '/controle-produtivo';
 
+/** Entrada suave ao abrir o bloco (respeita prefers-reduced-motion via motion-safe). */
+const blockCardEnter = cn(
+  'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both',
+);
+
+const blockPanelFromLeft = cn(
+  blockCardEnter,
+  'motion-safe:slide-in-from-left-3 motion-safe:delay-75',
+);
+const blockPanelFromBottom = cn(
+  blockCardEnter,
+  'motion-safe:slide-in-from-bottom-3 motion-safe:delay-150',
+);
+const blockPanelFromRight = cn(
+  blockCardEnter,
+  'motion-safe:slide-in-from-right-3 motion-safe:delay-100',
+);
+
+const blockMachineRowEnter = cn(
+  'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both motion-reduce:animate-none',
+);
+
+const blockSummaryCardEnter = cn(
+  blockCardEnter,
+  'motion-safe:slide-in-from-right-4 motion-safe:zoom-in-[0.98] motion-safe:delay-200',
+);
+
 type BlockInfoItemProps = {
   icon: LucideIcon;
   label: string;
@@ -281,7 +308,12 @@ function BlockMachinesColumn({
 
   return (
     <aside className="flex min-h-0 min-w-0 shrink-0 flex-col gap-3 lg:h-full">
-      <section className="flex min-h-64 flex-1 flex-col rounded-2xl border border-border/60 bg-card p-4 lg:min-h-0">
+      <section
+        className={cn(
+          'flex min-h-64 flex-1 flex-col rounded-2xl border border-border/60 bg-card p-4 lg:min-h-0',
+          blockPanelFromRight,
+        )}
+      >
         <h2 className="flex items-center justify-between gap-2 border-b border-border/60 pb-3 text-sm font-medium">
           <span className="flex items-center gap-2">
             <Cog className="size-4 text-brand" />
@@ -320,16 +352,21 @@ function BlockMachinesColumn({
           </p>
         ) : (
           <ul className="-mr-2 grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pt-3 pr-2">
-            {machines.map((machine) => {
+            {machines.map((machine, index) => {
               const selected = machine.id === selectedMachineId;
               const onMap = isMachineOnMap(machine);
               return (
                 <li
                   key={machine.id}
                   className={cn(
+                    blockMachineRowEnter,
                     selected &&
                       'rounded-lg border border-primary/30 bg-primary/5 p-1',
                   )}
+                  style={{
+                    animationDelay:
+                      index > 0 ? `${Math.min(index, 16) * 35}ms` : undefined,
+                  }}
                 >
                   <button
                     type="button"
@@ -399,7 +436,10 @@ function BlockMachinesColumn({
         type="button"
         onClick={onOpenProductionOrders}
         title="Ver OFs do bloco"
-        className="shrink-0 rounded-2xl border-2 border-primary bg-primary p-4 text-left transition-opacity hover:opacity-90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+        className={cn(
+          'shrink-0 rounded-2xl border-2 border-primary bg-primary p-4 text-left transition-opacity hover:opacity-90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+          blockSummaryCardEnter,
+        )}
       >
         <span className="flex gap-2 text-sm text-white">
           <Package className="size-4 text-white" aria-hidden />
@@ -531,7 +571,12 @@ export function BlockDetailPage() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-background p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)_minmax(13rem,calc(100vw/6))] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
-      <aside className="flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl border border-border/60 bg-card p-4 sm:p-5 lg:h-full">
+      <aside
+        className={cn(
+          'flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl border border-border/60 bg-card p-4 sm:p-5 lg:h-full',
+          blockPanelFromLeft,
+        )}
+      >
         <header className="flex items-start gap-3 border-b border-border/60 pb-4">
           <Button
             type="button"
@@ -610,7 +655,12 @@ export function BlockDetailPage() {
         ) : null}
       </aside>
 
-      <main className="relative flex min-h-[60dvh] min-w-0 flex-col rounded-2xl border border-border/60 bg-card p-3 sm:p-4 lg:h-full lg:min-h-0">
+      <main
+        className={cn(
+          'relative flex min-h-[60dvh] min-w-0 flex-col rounded-2xl border border-border/60 bg-card p-3 sm:p-4 lg:h-full lg:min-h-0',
+          blockPanelFromBottom,
+        )}
+      >
         <span className="pointer-events-none absolute top-4 left-4 z-10 text-sm font-semibold text-brand sm:top-5 sm:left-5">
           Mapa do bloco
         </span>
