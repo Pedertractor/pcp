@@ -6,6 +6,10 @@ import {
 } from '../lib/cost-center-code.js';
 import { startOfLocalDay } from '../lib/excel-serial-date.js';
 import { AppError } from '../lib/errors.js';
+import {
+  hasStatusDateValue,
+  normalizeStatusDate,
+} from '../lib/status-date.js';
 import type { PlanningRow, PlanningSyncResult } from '../types/planning.types.js';
 
 type SyncInput = {
@@ -24,17 +28,71 @@ function paintColorIdentity(raw: string): { name: string; nameKey: string } | nu
   return { name, nameKey: name.toLocaleLowerCase('pt-BR') };
 }
 
-const SYNCED_STATUS_DATES = {
+/** Classificacao de planejamento conhecida -> enum (demais rotulos ficam PENDING). */
+const PLANNING_STATUS_BY_LABEL: Partial<
+  Record<string, ProductionOrderStatus>
+> = {
   HOJE: ProductionOrderStatus.PENDING,
   'NO ATRASO': ProductionOrderStatus.OVERDUE,
-} as const;
+};
 
-type SyncedStatusDate = keyof typeof SYNCED_STATUS_DATES;
+function planningStatusFromStatusDateRaw(
+  statusDate: string | null,
+): ProductionOrderStatus {
+  const key = normalizeStatusDate(statusDate);
+  if (!key) {
+    return ProductionOrderStatus.PENDING;
+  }
+  return PLANNING_STATUS_BY_LABEL[key] ?? ProductionOrderStatus.PENDING;
+}
 
-/** `STATUS_DATA` chega com pontos à esquerda (ex.: `......HOJE`). */
-function syncedStatusDate(statusDate: string | null): SyncedStatusDate | null {
-  const value = (statusDate ?? '').replace(/^[.\s]+/, '').trim().toUpperCase();
-  return value in SYNCED_STATUS_DATES ? (value as SyncedStatusDate) : null;
+type OrderExecutionState = 'completed' | 'in_progress' | 'planning';
+
+async function orderExecutionStateFromProcesses(
+  prisma: PrismaClient,
+  orderId: string,
+  orderQuantity: number,
+): Promise<OrderExecutionState> {
+  const processes = await prisma.productionProcess.findMany({
+    where: { productionOrderId: orderId },
+    select: { startedAt: true, finishedAt: true, quantity: true, quantityReported: true },
+  });
+  if (processes.length === 0) {
+    return 'planning';
+  }
+
+  let closedQty = 0;
+  let hasOpen = false;
+
+  for (const proc of processes) {
+    if (proc.finishedAt) {
+      const qty =
+        proc.quantityReported != null && proc.quantityReported >= 0
+          ? proc.quantityReported
+          : Math.max(proc.quantity, 0);
+      closedQty += qty;
+      continue;
+    }
+    if (proc.startedAt) {
+      hasOpen = true;
+    }
+  }
+
+  if (hasOpen) {
+    return 'in_progress';
+  }
+
+  const expected = orderQuantity > 0 ? orderQuantity : 0;
+  if (expected > 0 && closedQty >= expected) {
+    return 'completed';
+  }
+
+  const allFinished = processes.every((p) => p.finishedAt !== null);
+  if (allFinished && processes.length > 0) {
+    return 'completed';
+  }
+
+  return 'planning';
 }
 
 export class ProductionPlanningSyncService {
@@ -74,8 +132,8 @@ export class ProductionPlanningSyncService {
     const inCostCenters = input.rows.filter((row) =>
       costCenterMatches(row.costCenter, costCenters),
     );
-    const matched = inCostCenters.filter(
-      (row) => syncedStatusDate(row.statusDate) !== null,
+    const syncedRows = inCostCenters.filter((row) =>
+      hasStatusDateValue(row.statusDate),
     );
 
     let machinesCreated = 0;
@@ -84,8 +142,9 @@ export class ProductionPlanningSyncService {
 
     const machineCache = new Map<string, string>();
     const colorCache = new Map<string, string>();
+    const touchedOrderIds = new Set<string>();
 
-    for (const row of matched) {
+    for (const row of syncedRows) {
       const lineCode = row.lineCode.trim();
       const machineCode = row.machineCode.trim();
       let machineId = machineCache.get(machineCode);
@@ -137,10 +196,11 @@ export class ProductionPlanningSyncService {
         where: {
           blockId_ofNumber: { blockId: block.id, ofNumber: row.ofNumber },
         },
-        select: { id: true, status: true },
+        select: { id: true, status: true, quantity: true },
       });
 
-      const data = {
+      const planningStatus = planningStatusFromStatusDateRaw(row.statusDate);
+      const baseData = {
         partCode: row.partCode,
         line: lineCode,
         colorId,
@@ -152,24 +212,36 @@ export class ProductionPlanningSyncService {
         quantity: row.quantity,
         targetDate: referenceDay,
         syncDate: referenceDay,
-        status: SYNCED_STATUS_DATES[syncedStatusDate(row.statusDate)!],
+        status: planningStatus,
       };
 
       if (existingOrder) {
+        const data =
+          existingOrder.status === ProductionOrderStatus.COMPLETED
+            ? { ...baseData, status: ProductionOrderStatus.COMPLETED }
+            : baseData;
+
         await this.prisma.productionOrder.update({
           where: { id: existingOrder.id },
-          data:
-            existingOrder.status === ProductionOrderStatus.COMPLETED
-              ? { ...data, status: ProductionOrderStatus.COMPLETED }
-              : data,
+          data,
         });
+        touchedOrderIds.add(existingOrder.id);
         ordersUpdated += 1;
       } else {
-        await this.prisma.productionOrder.create({
-          data: { ofNumber: row.ofNumber, blockId: block.id, ...data },
+        const created = await this.prisma.productionOrder.create({
+          data: { ofNumber: row.ofNumber, blockId: block.id, ...baseData },
+          select: { id: true },
         });
+        touchedOrderIds.add(created.id);
         ordersCreated += 1;
       }
+    }
+
+    if (touchedOrderIds.size > 0) {
+      await this.reconcileTouchedOrdersExecutionStatus(
+        block.id,
+        touchedOrderIds,
+      );
     }
 
     let demoPositionsAssigned = 0;
@@ -187,13 +259,69 @@ export class ProductionPlanningSyncService {
       referenceDate: referenceDay.toISOString().slice(0, 10),
       costCenters,
       rowsRead: input.rows.length,
-      rowsMatched: matched.length,
-      rowsSkippedByStatus: inCostCenters.length - matched.length,
+      rowsMatched: syncedRows.length,
+      rowsSkippedByStatus: inCostCenters.length - syncedRows.length,
       machinesCreated,
       ordersCreated,
       ordersUpdated,
       demoPositionsAssigned,
     };
+  }
+
+  /**
+   * Processos (consulta de execucao) prevalecem: concluido / em andamento;
+   * senao mantem o status derivado do planejamento.
+   */
+  private async reconcileTouchedOrdersExecutionStatus(
+    blockId: string,
+    orderIds: Set<string>,
+  ): Promise<void> {
+    const ids = [...orderIds];
+    if (ids.length === 0) {
+      return;
+    }
+
+    const orders = await this.prisma.productionOrder.findMany({
+      where: { id: { in: ids }, blockId },
+      select: { id: true, quantity: true, status: true },
+    });
+
+    await Promise.all(
+      orders.map(async (order) => {
+        const execution = await orderExecutionStateFromProcesses(
+          this.prisma,
+          order.id,
+          order.quantity,
+        );
+
+        if (execution === 'completed') {
+          await this.prisma.productionOrder.update({
+            where: { id: order.id },
+            data: {
+              status: ProductionOrderStatus.COMPLETED,
+              completedAt: new Date(),
+            },
+          });
+          return;
+        }
+
+        if (execution === 'in_progress') {
+          if (order.status === ProductionOrderStatus.COMPLETED) {
+            return;
+          }
+          await this.prisma.productionOrder.update({
+            where: { id: order.id },
+            data: {
+              status: ProductionOrderStatus.IN_PROGRESS,
+              completedAt: null,
+            },
+          });
+          return;
+        }
+
+        // Sem processo executando/concluido: status permanece o gravado pelo planejamento nesta sync.
+      }),
+    );
   }
 
   private async assignDemoPositions(blockId: string): Promise<number> {

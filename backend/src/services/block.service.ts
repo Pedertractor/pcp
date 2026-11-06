@@ -7,6 +7,7 @@ import {
   type BlockPlanMimeType,
 } from '../lib/block-plan-storage.js';
 import { AppError } from '../lib/errors.js';
+import { normalizeStatusDate } from '../lib/status-date.js';
 import type {
   BlockDetail,
   BlockSummary,
@@ -58,6 +59,12 @@ function effectiveProcessQuantity(
     return quantityReported;
   }
   return quantity >= 0 ? quantity : 0;
+}
+
+/** Planejamento do card lateral: só HOJE e NO ATRASO (STATUS_DATA normalizado). */
+function isPlanningStatusHojeOuNoAtraso(statusDate: string | null): boolean {
+  const key = normalizeStatusDate(statusDate);
+  return key === 'HOJE' || key === 'NO ATRASO';
 }
 
 function toBlockSummary(block: BlockWithSummary): BlockSummary {
@@ -123,7 +130,7 @@ export class BlockService {
 
     const orders = await this.prisma.productionOrder.findMany({
       where: { blockId: id },
-      select: { machineId: true, quantity: true, area: true },
+      select: { machineId: true, quantity: true, area: true, statusDate: true },
     });
     const totalsByMachine = new Map<
       string | null,
@@ -132,6 +139,9 @@ export class BlockService {
     let expectedPiecesToday = 0;
     let expectedAreaToday = 0;
     for (const order of orders) {
+      if (!isPlanningStatusHojeOuNoAtraso(order.statusDate)) {
+        continue;
+      }
       const orderArea = (order.area ?? 0) * order.quantity;
       const totals = totalsByMachine.get(order.machineId) ?? {
         pieces: 0,
@@ -157,13 +167,16 @@ export class BlockService {
         quantity: true,
         quantityReported: true,
         area: true,
-        productionOrder: { select: { area: true } },
+        productionOrder: { select: { area: true, statusDate: true } },
       },
     });
 
     let producedPiecesToday = 0;
     let producedAreaToday = 0;
     for (const proc of finishedProcesses) {
+      if (!isPlanningStatusHojeOuNoAtraso(proc.productionOrder.statusDate)) {
+        continue;
+      }
       const m2PerPiece =
         proc.area ??
         proc.productionOrder.area ??

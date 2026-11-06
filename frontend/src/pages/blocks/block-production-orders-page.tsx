@@ -47,6 +47,20 @@ function normalizeStatusDate(value: string | null): string {
   return (value ?? '').replace(/^[.\s]+/, '').trim().toUpperCase();
 }
 
+const DEFAULT_STATUS_DATE_FILTER = ['HOJE', 'NO ATRASO'] as const;
+
+function sameStringSet(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const setA = new Set(a);
+  return b.every((item) => setA.has(item));
+}
+
+function isDefaultStatusDateFilter(value: StatusDateFilter): boolean {
+  return value !== 'all' && sameStringSet(value, DEFAULT_STATUS_DATE_FILTER);
+}
+
 export function BlockProductionOrdersPage() {
   const navigate = useNavigate();
   const { blockId = '' } = useParams();
@@ -56,7 +70,9 @@ export function BlockProductionOrdersPage() {
   const [filterColor, setFilterColor] = useState('');
   const [filterOperation, setFilterOperation] = useState('');
   const [filterCostCenter, setFilterCostCenter] = useState(ALL);
-  const [filterStatusDate, setFilterStatusDate] = useState<StatusDateFilter>(ALL);
+  const [filterStatusDate, setFilterStatusDate] = useState<StatusDateFilter>([
+    ...DEFAULT_STATUS_DATE_FILTER,
+  ]);
   const [filterStatus, setFilterStatus] = useState<ProductionOrderStatus | typeof ALL>(
     ALL,
   );
@@ -91,6 +107,16 @@ export function BlockProductionOrdersPage() {
     [orders],
   );
 
+  const statusDateValues = useMemo(
+    () =>
+      [
+        ...new Set(
+          orders.map((o) => normalizeStatusDate(o.statusDate)).filter(Boolean),
+        ),
+      ].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [orders],
+  );
+
   const filteredOrders = useMemo(() => {
     const ofQ = filterOf.trim().toLocaleLowerCase('pt-BR');
     const productQ = filterProduct.trim().toLocaleLowerCase('pt-BR');
@@ -110,11 +136,7 @@ export function BlockProductionOrdersPage() {
       }
       if (filterStatusDate !== ALL) {
         const norm = normalizeStatusDate(order.statusDate);
-        if (
-          filterStatusDate === 'HOJE'
-            ? norm !== 'HOJE'
-            : norm !== 'NO ATRASO'
-        ) {
+        if (!filterStatusDate.includes(norm)) {
           return false;
         }
       }
@@ -164,7 +186,7 @@ export function BlockProductionOrdersPage() {
     filterColor.trim(),
     filterOperation.trim(),
     filterCostCenter !== ALL,
-    filterStatusDate !== ALL,
+    filterStatusDate === ALL || !isDefaultStatusDateFilter(filterStatusDate),
     filterStatus !== ALL,
     filterSyncDate !== ALL,
   ].filter(Boolean).length;
@@ -182,7 +204,7 @@ export function BlockProductionOrdersPage() {
     setFilterColor('');
     setFilterOperation('');
     setFilterCostCenter(ALL);
-    setFilterStatusDate(ALL);
+    setFilterStatusDate([...DEFAULT_STATUS_DATE_FILTER]);
     setFilterStatus(ALL);
     setFilterSyncDate(ALL);
     window.setTimeout(() => setAnimateSpin(false), 400);
@@ -202,6 +224,24 @@ export function BlockProductionOrdersPage() {
 
   const goBack = () => navigate(`/controle-produtivo/${blockId}`);
 
+  const selectAllStatusDates = useCallback(() => {
+    setFilterStatusDate(ALL);
+  }, []);
+
+  const toggleStatusDate = useCallback((normalizedLabel: string) => {
+    setFilterStatusDate((current) => {
+      if (current === ALL) {
+        return [normalizedLabel];
+      }
+      const has = current.includes(normalizedLabel);
+      if (has) {
+        const next = current.filter((item) => item !== normalizedLabel);
+        return next.length === 0 ? [...DEFAULT_STATUS_DATE_FILTER] : next;
+      }
+      return [...current, normalizedLabel];
+    });
+  }, []);
+
   return (
     <div className="flex min-h-dvh flex-col gap-4 bg-background p-3 sm:p-6">
       <header className="flex items-start gap-3">
@@ -219,9 +259,6 @@ export function BlockProductionOrdersPage() {
           <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">
             OFs do bloco {blockQuery.data?.name ?? ''}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            OFs de hoje e em atraso, com a data da última sincronização.
-          </p>
         </div>
       </header>
 
@@ -271,10 +308,12 @@ export function BlockProductionOrdersPage() {
           onFilterColorChange={setFilterColor}
           onFilterOperationChange={setFilterOperation}
           onFilterCostCenterChange={setFilterCostCenter}
-          onFilterStatusDateChange={setFilterStatusDate}
+          onFilterStatusDateSelectAll={selectAllStatusDates}
+          onFilterStatusDateToggle={toggleStatusDate}
           onFilterStatusChange={setFilterStatus}
           onFilterSyncDateChange={setFilterSyncDate}
           onReset={resetFilters}
+          statusDateValueOptions={statusDateValues}
         />
       ) : null}
 

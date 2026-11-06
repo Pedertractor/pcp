@@ -1,4 +1,5 @@
 import { RotateCw } from 'lucide-react';
+import { useMemo } from 'react';
 
 import { CollapsibleFilters } from '@/components/collapsible-filters';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,8 @@ import { cn } from '@/lib/utils';
 
 const ALL = 'all';
 
-export type StatusDateFilter = 'all' | 'HOJE' | 'NO ATRASO';
+/** `all` = sem filtro por STATUS_DATA; array = só OFs cujo status normalizado está na lista. */
+export type StatusDateFilter = 'all' | string[];
 
 type BlockProductionOrdersFiltersProps = {
   filterOf: string;
@@ -39,16 +41,19 @@ type BlockProductionOrdersFiltersProps = {
   onFilterColorChange: (value: string) => void;
   onFilterOperationChange: (value: string) => void;
   onFilterCostCenterChange: (value: string) => void;
-  onFilterStatusDateChange: (value: StatusDateFilter) => void;
+  onFilterStatusDateSelectAll: () => void;
+  onFilterStatusDateToggle: (normalizedLabel: string) => void;
   onFilterStatusChange: (value: ProductionOrderStatus | typeof ALL) => void;
   onFilterSyncDateChange: (value: string) => void;
   onReset: () => void;
+  /** Valores normalizados de STATUS_DATA ja vistos nas OFs (para filtrar outros rotulos). */
+  statusDateValueOptions: string[];
 };
 
-const STATUS_DATE_OPTIONS: { value: StatusDateFilter; label: string }[] = [
-  { value: ALL, label: 'Todos' },
-  { value: 'HOJE', label: 'HOJE' },
-  { value: 'NO ATRASO', label: 'NO ATRASO' },
+const STATUS_DATE_OPTIONS_STATIC: { norm: string; label: string }[] = [
+  { norm: ALL, label: 'Todos' },
+  { norm: 'HOJE', label: 'HOJE' },
+  { norm: 'NO ATRASO', label: 'NO ATRASO' },
 ];
 
 const INTERNAL_STATUS_OPTIONS: (ProductionOrderStatus | typeof ALL)[] = [
@@ -80,11 +85,43 @@ export function BlockProductionOrdersFilters({
   onFilterColorChange,
   onFilterOperationChange,
   onFilterCostCenterChange,
-  onFilterStatusDateChange,
+  onFilterStatusDateSelectAll,
+  onFilterStatusDateToggle,
   onFilterStatusChange,
   onFilterSyncDateChange,
   onReset,
+  statusDateValueOptions,
 }: BlockProductionOrdersFiltersProps) {
+  const statusDateFilterButtons = useMemo(() => {
+    const staticNorms = new Set(
+      STATUS_DATE_OPTIONS_STATIC.filter((o) => o.norm !== ALL).map((o) => o.norm),
+    );
+    const extra = statusDateValueOptions
+      .filter((norm) => norm.length > 0 && !staticNorms.has(norm))
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return [
+      ...STATUS_DATE_OPTIONS_STATIC,
+      ...extra.map((norm) => ({ norm, label: norm })),
+    ];
+  }, [statusDateValueOptions]);
+
+  function isStatusDateButtonSelected(norm: string): boolean {
+    if (norm === ALL) {
+      return filterStatusDate === 'all';
+    }
+    return (
+      filterStatusDate !== 'all' && filterStatusDate.includes(norm)
+    );
+  }
+
+  function onStatusDateButtonClick(norm: string): void {
+    if (norm === ALL) {
+      onFilterStatusDateSelectAll();
+      return;
+    }
+    onFilterStatusDateToggle(norm);
+  }
+
   return (
     <CollapsibleFilters summary={filtersSummary}>
       <div className="flex min-w-[100px] flex-1 flex-col sm:max-w-[120px]">
@@ -175,15 +212,15 @@ export function BlockProductionOrdersFilters({
       <div className="flex min-w-[200px] flex-col">
         <Label className="text-sm font-medium">Status da data</Label>
         <div className="flex flex-wrap gap-1">
-          {STATUS_DATE_OPTIONS.map(({ value, label }) => (
+          {statusDateFilterButtons.map(({ norm, label }) => (
             <Button
-              key={value}
+              key={norm === ALL ? 'status-date-all' : norm}
               type="button"
               variant="outline"
-              onClick={() => onFilterStatusDateChange(value)}
+              onClick={() => onStatusDateButtonClick(norm)}
               className={cn(
                 'min-h-9 flex-1 px-2 text-xs sm:flex-none sm:px-3',
-                filterStatusDate === value
+                isStatusDateButtonSelected(norm)
                   ? 'bg-brand-muted text-foreground'
                   : 'bg-muted text-muted-foreground',
               )}

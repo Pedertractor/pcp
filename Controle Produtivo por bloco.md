@@ -67,14 +67,17 @@ O campo `STATUS_DATA` possui os seguintes valores identificados:
 
 A consulta também retorna OFs futuras (`NESTA SEMANA`, `PRÓXIMA SEMANA`, `NESTE MÊS`, `PRÓXIMO MÊS`, `MESES SEGUINTES`). O valor chega com pontos à esquerda (ex.: `......HOJE`, `.......NO ATRASO`), que são ignorados na comparação.
 
-**Regra de importação:** somente OFs com `STATUS_DATA` igual a `HOJE` ou `NO ATRASO` são gravadas. As demais são descartadas na sincronização (o resultado informa a quantidade em `rowsSkippedByStatus`). A ideia é produzir tudo o que está previsto para hoje ou atrasado naquele processo do centro de custo.
+**Regra de importação:** são gravadas **todas** as linhas cujo `STATUS_DATA` não esteja vazio após normalização (remove pontos/espaços à esquerda). Linhas **sem** `STATUS_DATA` são ignoradas e entram em `rowsSkippedByStatus`. Inclui `NESTA SEMANA`, `PRÓXIMA SEMANA`, `NESTE MÊS` etc., pois a OF pode “adiantar” e aparecer com outra classificação.
 
-| `STATUS_DATA` | `ProductionOrder.status` ao sincronizar |
+| `STATUS_DATA` | `ProductionOrder.status` inicial ao sincronizar (antes da reconciliação com processos) |
 |---|---|
 | `HOJE` | `PENDING` |
 | `NO ATRASO` | `OVERDUE` |
+| Demais rótulos não vazios | `PENDING` (mantém o texto original em `statusDate`) |
 
-**Regra:** o sistema deverá preservar o valor original de `STATUS_DATA`, sem substituí-lo diretamente pelo enum interno.
+Depois do upsert, o backend reconcilia com `ProductionProcess`: processo com início e fim → `COMPLETED`; com início e sem fim → `IN_PROGRESS` (exceto se a OF já estava `COMPLETED` por política anterior). Caso contrário permanece o status derivado do planejamento.
+
+**Regra:** o sistema preserva o valor original de `STATUS_DATA` em `statusDate` (não é substituído pelo enum interno).
 
 ### 2.4. Persistência dos registros
 
@@ -98,7 +101,7 @@ Cada `ProductionOrder` guarda em `syncDate` a data da última sincronização de
 
 #### Como cada linha da consulta é tratada
 
-1. A linha é descartada se o centro de custo não pertence ao bloco ou se o `STATUS_DATA` não é `HOJE` nem `NO ATRASO` (seção 2.3).
+1. A linha é descartada se o centro de custo não pertence ao bloco ou se o `STATUS_DATA` está vazio após normalização (seção 2.3).
 2. O sistema procura a OF pelo bloco da sincronização + `ofNumber`.
 3. **OF nova no bloco:** é cadastrada no bloco com os dados da linha e `syncDate` = data da sincronização. Se a mesma OF existir em outro bloco, aquele registro não é afetado.
 4. **OF já existente no bloco:** o mesmo registro é atualizado com os valores da linha. O que vier diferente passa a valer (máquina, `STATUS_DATA`, quantidade etc.), e a `syncDate` passa a ser a data desta sincronização.
@@ -118,7 +121,7 @@ Cada `ProductionOrder` guarda em `syncDate` a data da última sincronização de
 | `CCUSTO` | `costCenter` | Atualizado com o valor recebido (sempre um centro de custo do bloco) |
 | `QTE` | `quantity` | Atualizado com o valor recebido |
 | `STATUS_DATA` | `statusDate` | Atualizado com o valor original (ex.: de `HOJE` para `NO ATRASO`) |
-| `STATUS_DATA` | `status` | Recalculado: `HOJE` → `PENDING`, `NO ATRASO` → `OVERDUE`. Exceção: OF `COMPLETED` continua `COMPLETED` |
+| `STATUS_DATA` | `status` | Base: `HOJE` → `PENDING`, `NO ATRASO` → `OVERDUE`, demais rótulos → `PENDING`; depois aplicar reconciliação com processos (seção 4.7). Exceção na atualização: OF já `COMPLETED` mantém `COMPLETED` na mesma operação de sync até a reconciliação avaliar processos |
 | — | `syncDate` / `targetDate` | Data de referência da sincronização |
 
 #### Exemplo: OF que não foi concluída no dia
@@ -134,7 +137,7 @@ Cada `ProductionOrder` guarda em `syncDate` a data da última sincronização de
 
 - A OF nunca é duplicada dentro do bloco, nem entre dias nem dentro da mesma sincronização.
 - A sincronização de um bloco só cria e atualiza OFs daquele bloco. A mesma OF em outro bloco é um registro independente.
-- A OF só passa para `COMPLETED` quando toda a produção dela naquele processo do centro de custo for concluída. A sincronização de planejamento nunca conclui uma OF.
+- A OF só passa para `COMPLETED` quando toda a produção dela naquele processo do centro de custo for concluída (regra principal: `DTH_INICIO` e `DTH_FINAL` na consulta de processos). Na importação por planilha, após gravar a linha de planejamento o backend **reconcilia** com `ProductionProcess` já existentes: se houver processo encerrado que cubra a quantidade, a OF vai para `COMPLETED` mesmo vindo só do planejamento.
 - Se uma OF já `COMPLETED` voltar em uma sincronização, os dados de planejamento são atualizados, mas o status `COMPLETED` é mantido.
 - Uma OF que não aparece em uma sincronização não é apagada nem alterada. Ela mantém a última `syncDate` em que apareceu.
 - Se a mesma OF vier mais de uma vez na mesma consulta, vale a última linha lida.
@@ -143,7 +146,7 @@ Cada `ProductionOrder` guarda em `syncDate` a data da última sincronização de
 
 Ao clicar no card **Produzido / esperado hoje** (ou equivalente na lateral do bloco), na tela do bloco, o sistema abre a lista das OFs do bloco (`/controle-produtivo/:blockId/ofs`), consumindo `GET /api/blocks/:id/production-orders`.
 
-- O card mostra **produzido / esperado** em peças e em m². O **esperado** segue o planejamento: soma de `ProductionOrder.quantity` e de m² (seção 2.7), apenas OFs `HOJE` e `NO ATRASO`. O **produzido** vem dos **processos** (`ProductionProcess`) com **`DTH_FINAL` no dia civil atual** (servidor): soma da quantidade efetiva (`QTD_APT` se informado, senão `QTD`) e soma de m² = (m² por peça) × quantidade efetiva — m² por peça = `ProductionProcess.area` se existir, senão `ProductionOrder.area` da OF vinculada. A lista de OFs continua sendo só o esperado.
+- O card mostra **produzido / esperado** em peças e em m². O **esperado** segue o planejamento: soma de `ProductionOrder.quantity` e de m² (seção 2.7) sobre **todas** as OFs sincronizadas do bloco (qualquer `STATUS_DATA` não vazio). O **produzido** vem dos **processos** (`ProductionProcess`) com **`DTH_FINAL` no dia civil atual** (servidor): soma da quantidade efetiva (`QTD_APT` se informado, senão `QTD`) e soma de m² = (m² por peça) × quantidade efetiva — m² por peça = `ProductionProcess.area` se existir, senão `ProductionOrder.area` da OF vinculada. A **lista de OFs** lista as mesmas OFs gravadas; dá para filtrar por `STATUS_DATA` na UI.
 - Cada linha exibe OF, produto, máquina, cor, operação, centro de custo, quantidade, m² por peça, m² total da OF, `STATUS_DATA`, status interno e a data da sincronização.
 - Abaixo dos totais, a mesma barra de filtros da tela de usuários (`CollapsibleFilters`): campos rotulados (OF, produto, máquina, cor, operação, centro de custo, status da data, status interno, sincronização) e botão de limpar. Em telas estreitas, use **Mostrar filtros**. O total de OFs, de peças e de m² acompanha o filtro.
 
@@ -155,7 +158,7 @@ Cálculo:
 
 - **m² da OF** = `area` × `quantity`. Exemplo: OF com 8 peças de 0,333 m² = 8 × 0,333 = 2,664 m².
 - **m² esperado da máquina** = soma do m² das OFs da máquina.
-- **m² esperado do bloco** = soma do m² de todas as OFs do bloco (somente `HOJE` e `NO ATRASO`).
+- **m² esperado do bloco** = soma do m² de todas as OFs do bloco presentes em `ProductionOrder` (todas as sincronizadas com `STATUS_DATA` não vazio).
 
 Regras:
 
@@ -520,7 +523,7 @@ Armazena o catálogo de cores e marcas das tintas, permitindo associar as inform
 5. Identificar o bloco pelo centro de custo e criar as linhas e máquinas ainda não cadastradas, sem posição no mapa (seção 5.2).
 6. Criar as novas OFs.
 7. Atualizar as OFs existentes pela chave bloco + `ofNumber`, aplicando os valores recebidos (máquina, `STATUS_DATA`, quantidade etc.) e a nova data de sincronização (seção 2.5).
-8. Gravar a data da sincronização em `ProductionOrder.syncDate`, descartando as OFs que não estão como `HOJE` ou `NO ATRASO` (seções 2.3 e 2.5).
+8. Gravar a data da sincronização em `ProductionOrder.syncDate`; descartar apenas linhas **sem** `STATUS_DATA` após normalização (seções 2.3 e 2.5).
 9. Preservar as classificações originais de `STATUS_DATA`.
 10. Registrar o resultado da sincronização.
 
