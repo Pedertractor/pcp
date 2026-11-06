@@ -11,8 +11,8 @@ const GLOW_CYCLE_MS = 2000;
 const STORAGE_KEY = 'pcp.login-process-glows';
 
 const DEFAULT_GLOWS = {
-  laser: { x: 51.2, y: 59.2 },
-  weld: { x: 69.0, y: 55.6 },
+  laser: { x: 50.5, y: 62.5 },
+  weld: { x: 68.0, y: 57.0 },
 } satisfies Record<string, ProcessGlowPosition>;
 
 type GlowKind = keyof typeof DEFAULT_GLOWS;

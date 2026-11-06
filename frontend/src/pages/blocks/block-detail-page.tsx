@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowUpDown,
+  ChevronRight,
   CalendarDays,
   Check,
   ClipboardList,
@@ -437,28 +438,34 @@ function BlockMachinesColumn({
         onClick={onOpenProductionOrders}
         title="Ver OFs do bloco"
         className={cn(
-          'shrink-0 rounded-2xl border-2 border-primary bg-primary p-4 text-left transition-opacity hover:opacity-90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+          'group shrink-0 flex w-full items-center gap-3 rounded-2xl border-2 border-primary bg-primary p-4 text-left transition-opacity hover:opacity-90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
           blockSummaryCardEnter,
         )}
       >
-        <span className="flex gap-2 text-sm text-white">
-          <Package className="size-4 text-white" aria-hidden />
-          Produzido / planejado
+        <span className="min-w-0 flex-1">
+          <span className="flex gap-2 text-sm text-white">
+            <Package className="size-4 shrink-0 text-white" aria-hidden />
+            Produzido / planejado
+          </span>
+          <span
+            className="mt-2 block text-2xl font-bold leading-tight tracking-tight tabular-nums text-white sm:text-3xl"
+            title="Peças: apontadas em processos finalizados hoje / planejamento atual do bloco"
+          >
+            {piecesFormatter.format(block.producedPiecesToday)} /{' '}
+            {piecesFormatter.format(block.expectedPiecesToday)} pç
+          </span>
+          <span
+            className="mt-1 block text-base font-semibold tabular-nums text-white/90 sm:text-lg"
+            title="m²: soma (m² por peça × qtd. do processo) para processos finalizados hoje / esperado do planejamento"
+          >
+            {areaFormatter.format(block.producedAreaToday)} /{' '}
+            {areaFormatter.format(block.expectedAreaToday)} m²
+          </span>
         </span>
-        <span
-          className="mt-2 block text-2xl font-bold leading-tight tracking-tight tabular-nums text-white sm:text-3xl"
-          title="Peças: apontadas em processos finalizados hoje / planejamento atual do bloco"
-        >
-          {piecesFormatter.format(block.producedPiecesToday)} /{' '}
-          {piecesFormatter.format(block.expectedPiecesToday)} pç
-        </span>
-        <span
-          className="mt-1 block text-base font-semibold tabular-nums text-white/90 sm:text-lg"
-          title="m²: soma (m² por peça × qtd. do processo) para processos finalizados hoje / esperado do planejamento"
-        >
-          {areaFormatter.format(block.producedAreaToday)} /{' '}
-          {areaFormatter.format(block.expectedAreaToday)} m²
-        </span>
+        <ChevronRight
+          className="size-6 shrink-0 text-white/95 transition-transform duration-200 group-hover:translate-x-0.5"
+          aria-hidden
+        />
       </button>
     </aside>
   );
@@ -570,7 +577,7 @@ export function BlockDetailPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-background p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)_minmax(13rem,calc(100vw/6))] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+    <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-background p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)_minmax(17rem,calc(100vw/4.8))] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
       <aside
         className={cn(
           'flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl border border-border/60 bg-card p-4 sm:p-5 lg:h-full',
