@@ -1442,6 +1442,10 @@ export function BlockPlanMachineEditor({
                 const selected = machine.id === selectedMachineId;
                 const shortSide = Math.min(box.width, box.height);
                 const fontSize = Math.max(9, Math.min(11, shortSide * 0.12));
+                const areaColor =
+                  (demoSprayMachine?.machine.id === machine.id
+                    ? demoSprayColor
+                    : null) ?? (selected ? STROKE_SELECTED : STROKE);
                 return (
                   <MapLabelBalloon
                     key={`machine-label-${machine.id}`}
@@ -1454,11 +1458,9 @@ export function BlockPlanMachineEditor({
                     box={box}
                     fontSize={fontSize}
                     padding={fontSize >= 10 ? 4 : 3}
-                    fill={
-                      selected ? 'hsl(142 40% 18%)' : 'hsla(0, 0%, 100%, 0.94)'
-                    }
-                    textFill={selected ? 'hsl(0 0% 98%)' : 'hsl(142 76% 22%)'}
-                    stroke={selected ? STROKE_SELECTED : STROKE}
+                    fill={areaColor}
+                    textFill="hsl(0 0% 0%)"
+                    stroke={areaColor}
                     strokeWidth={selected ? 1.25 : 1}
                     cornerRadius={3}
                     pointerWidth={selected ? 7 : 6}
