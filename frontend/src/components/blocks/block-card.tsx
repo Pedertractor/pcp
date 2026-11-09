@@ -48,7 +48,8 @@ export function BlockCard({ block }: { block: BlockSummary }) {
 
         <p className="mt-auto text-sm opacity-85">
           {block.machinesCount} máquinas ·{' '}
-          {block.productionOrdersCount} OFs
+          {block.productionOrdersCount} OFs ·{' '}
+          hoje
         </p>
       </div>
     </Link>

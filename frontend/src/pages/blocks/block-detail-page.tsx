@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowUpDown,
+  ChevronDown,
   ChevronRight,
   CalendarDays,
   Check,
@@ -278,6 +279,98 @@ function byCode(a: BlockMachineItem, b: BlockMachineItem) {
 
 function onMapRank(machine: BlockMachineItem) {
   return isMachineOnMap(machine) ? 0 : 1;
+}
+
+function sumLineMachinesProduction(
+  machines: BlockDetail['machines'],
+  machineIds: string[],
+) {
+  const idSet = new Set(machineIds);
+  let expectedPiecesToday = 0;
+  let producedPiecesToday = 0;
+  let expectedAreaToday = 0;
+  let producedAreaToday = 0;
+
+  for (const machine of machines) {
+    if (!idSet.has(machine.id)) {
+      continue;
+    }
+    expectedPiecesToday += machine.expectedPiecesToday;
+    producedPiecesToday += machine.producedPiecesToday;
+    expectedAreaToday += machine.expectedAreaToday;
+    producedAreaToday += machine.producedAreaToday;
+  }
+
+  return {
+    expectedPiecesToday,
+    producedPiecesToday,
+    expectedAreaToday,
+    producedAreaToday,
+  };
+}
+
+function productionProgressPercent(produced: number, planned: number) {
+  if (planned <= 0) {
+    return produced > 0 ? 100 : 0;
+  }
+  return Math.round((produced / planned) * 100);
+}
+
+function productionBarFillPercent(produced: number, planned: number) {
+  if (planned <= 0) {
+    return produced > 0 ? 100 : 0;
+  }
+  return Math.min(100, (produced / planned) * 100);
+}
+
+function ProducedPlannedProgressBar({
+  produced,
+  planned,
+  variant = 'default',
+  className,
+}: {
+  produced: number;
+  planned: number;
+  variant?: 'default' | 'on-primary';
+  className?: string;
+}) {
+  const percent = productionProgressPercent(produced, planned);
+  const width = productionBarFillPercent(produced, planned);
+  const complete = planned > 0 && produced >= planned;
+  const inProgress = produced > 0 && !complete;
+
+  return (
+    <div
+      className={cn(
+        'h-1.5 overflow-hidden rounded-full',
+        variant === 'on-primary' ? 'bg-white/25' : 'bg-muted',
+        className,
+      )}
+      role="progressbar"
+      aria-valuenow={Math.round(width)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`${percent}% do planejado`}
+    >
+      <div
+        className={cn(
+          'h-full rounded-full transition-[width] duration-300 ease-out',
+          variant === 'on-primary'
+            ? complete
+              ? 'bg-white'
+              : inProgress
+                ? 'bg-white/95'
+                : 'bg-white/35'
+            : complete
+              ? 'bg-brand'
+              : inProgress
+                ? 'bg-primary'
+                : 'bg-muted-foreground/35',
+        )}
+        style={{ width: `${width}%` }}
+      />
+    </div>
+  );
 }
 
 const MACHINE_SORTERS: Record<
@@ -582,20 +675,44 @@ function BlockMachinesColumn({
             <Package className="size-4 shrink-0 text-white" aria-hidden />
             Produzido / planejado (hoje)
           </span>
-          <span
-            className="mt-2 block text-2xl font-bold leading-tight tracking-tight tabular-nums text-white sm:text-3xl"
-            title="Peças: apontadas em processos finalizados hoje / planejamento atual do bloco"
-          >
-            {piecesFormatter.format(block.producedPiecesToday)} /{' '}
-            {piecesFormatter.format(block.expectedPiecesToday)} pç
-          </span>
-          <span
-            className="mt-1 block text-base font-semibold tabular-nums text-white/90 sm:text-lg"
-            title="m²: soma (m² por peça × qtd. do processo) para processos finalizados hoje / esperado do planejamento"
-          >
-            {areaFormatter.format(block.producedAreaToday)} /{' '}
-            {areaFormatter.format(block.expectedAreaToday)} m²
-          </span>
+          <div className="mt-2 space-y-1">
+            <span
+              className="block text-2xl font-bold leading-tight tracking-tight tabular-nums text-white sm:text-3xl"
+              title="Peças: apontadas em processos finalizados hoje / planejamento atual do bloco"
+            >
+              {piecesFormatter.format(block.producedPiecesToday)} /{' '}
+              {piecesFormatter.format(block.expectedPiecesToday)} pç
+              {block.expectedPiecesToday > 0 ? (
+                <span className="ml-1 text-lg font-semibold text-white/80 sm:text-xl">
+                  ({productionProgressPercent(block.producedPiecesToday, block.expectedPiecesToday)}%)
+                </span>
+              ) : null}
+            </span>
+            <ProducedPlannedProgressBar
+              variant="on-primary"
+              produced={block.producedPiecesToday}
+              planned={block.expectedPiecesToday}
+            />
+          </div>
+          <div className="mt-2 space-y-1">
+            <span
+              className="block text-base font-semibold tabular-nums text-white/90 sm:text-lg"
+              title="m²: soma (m² por peça × qtd. do processo) para processos finalizados hoje / esperado do planejamento"
+            >
+              {areaFormatter.format(block.producedAreaToday)} /{' '}
+              {areaFormatter.format(block.expectedAreaToday)} m²
+              {block.expectedAreaToday > 0 ? (
+                <span className="ml-1 text-sm font-medium text-white/75">
+                  ({productionProgressPercent(block.producedAreaToday, block.expectedAreaToday)}%)
+                </span>
+              ) : null}
+            </span>
+            <ProducedPlannedProgressBar
+              variant="on-primary"
+              produced={block.producedAreaToday}
+              planned={block.expectedAreaToday}
+            />
+          </div>
         </span>
         {navigatingToProductionOrders ? (
           <Loader2Icon
@@ -886,41 +1003,124 @@ export function BlockDetailPage() {
                 Nenhuma linha. Clique em Nova linha para começar.
               </li>
             ) : (
-              (block.lines ?? []).map((line) => (
-                <li key={line.id}>
-                  <button
-                    type="button"
+              (block.lines ?? []).map((line) => {
+                const lineSelected = selectedLineId === line.id;
+                const lineTotals = sumLineMachinesProduction(
+                  block.machines,
+                  line.machineIds,
+                );
+
+                return (
+                  <li
+                    key={line.id}
                     className={cn(
-                      'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                      selectedLineId === line.id
-                        ? 'bg-primary/15 font-semibold ring-1 ring-primary/35'
-                        : 'bg-muted/70 hover:bg-muted',
+                      lineSelected &&
+                        'rounded-lg border border-primary/30 bg-primary/5 p-0.5',
                     )}
-                    onClick={() => {
-                      setSelectedMachineId(null);
-                      setSelectedLineId(line.id);
-                    }}
                   >
-                    <span className="min-w-0 truncate">{line.code}</span>
-                    <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="tabular-nums">
-                        {line.machineIds.length} máq.
-                      </span>
-                      {isLineOnMap(line) ? (
-                        <MapPin
-                          className="size-3.5 text-brand"
-                          aria-label="Com área no mapa"
-                        />
-                      ) : (
-                        <MapPinOff
-                          className="size-3.5 opacity-60"
-                          aria-label="Sem área no mapa"
-                        />
+                    <button
+                      type="button"
+                      aria-expanded={lineSelected}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                        lineSelected
+                          ? 'bg-primary/15 font-semibold ring-1 ring-primary/35'
+                          : 'bg-muted/70 hover:bg-muted',
                       )}
-                    </span>
-                  </button>
-                </li>
-              ))
+                      onClick={() => {
+                        setSelectedMachineId(null);
+                        setSelectedLineId(lineSelected ? null : line.id);
+                      }}
+                    >
+                      <span className="flex min-w-0 items-center gap-1">
+                        <ChevronDown
+                          className={cn(
+                            'size-3.5 shrink-0 text-muted-foreground transition-transform duration-200',
+                            lineSelected && 'rotate-180 text-primary',
+                          )}
+                          aria-hidden
+                        />
+                        <span className="min-w-0 truncate">{line.code}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="tabular-nums">
+                          {line.machineIds.length} máq.
+                        </span>
+                        {isLineOnMap(line) ? (
+                          <MapPin
+                            className="size-3.5 text-brand"
+                            aria-label="Com área no mapa"
+                          />
+                        ) : (
+                          <MapPinOff
+                            className="size-3.5 opacity-60"
+                            aria-label="Sem área no mapa"
+                          />
+                        )}
+                      </span>
+                    </button>
+                    {lineSelected ? (
+                      <div className="space-y-1.5 border-t border-primary/20 px-2.5 py-2 text-xs">
+                        <p className="font-medium text-muted-foreground">
+                          Produção hoje (soma das máquinas)
+                        </p>
+                        <div className="space-y-1">
+                          <div className="flex items-baseline justify-between gap-2 tabular-nums">
+                            <span className="text-muted-foreground">Peças</span>
+                            <span
+                              className="text-right font-semibold"
+                              title="Produzidas hoje / planejadas (soma das máquinas da linha)"
+                            >
+                              {piecesFormatter.format(lineTotals.producedPiecesToday)}{' '}
+                              /{' '}
+                              {piecesFormatter.format(lineTotals.expectedPiecesToday)}{' '}
+                              pç
+                              {lineTotals.expectedPiecesToday > 0 ? (
+                                <span className="ml-0.5 font-normal text-muted-foreground">
+                                  ({productionProgressPercent(
+                                    lineTotals.producedPiecesToday,
+                                    lineTotals.expectedPiecesToday,
+                                  )}
+                                  %)
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
+                          <ProducedPlannedProgressBar
+                            produced={lineTotals.producedPiecesToday}
+                            planned={lineTotals.expectedPiecesToday}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-baseline justify-between gap-2 tabular-nums">
+                            <span className="text-muted-foreground">Área</span>
+                            <span
+                              className="text-right font-medium text-muted-foreground"
+                              title="m² produzido / esperado (soma das máquinas da linha)"
+                            >
+                              {areaFormatter.format(lineTotals.producedAreaToday)} /{' '}
+                              {areaFormatter.format(lineTotals.expectedAreaToday)} m²
+                              {lineTotals.expectedAreaToday > 0 ? (
+                                <span className="ml-0.5 font-normal">
+                                  ({productionProgressPercent(
+                                    lineTotals.producedAreaToday,
+                                    lineTotals.expectedAreaToday,
+                                  )}
+                                  %)
+                                </span>
+                              ) : null}
+                            </span>
+                          </div>
+                          <ProducedPlannedProgressBar
+                            produced={lineTotals.producedAreaToday}
+                            planned={lineTotals.expectedAreaToday}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })
             )}
           </ul>
         </section>
