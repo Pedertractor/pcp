@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -15,23 +15,28 @@ import {
   Package,
   Paintbrush,
   Pencil,
+  Plus,
   Receipt,
+  Rows3,
   Settings,
   Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { BlockLinkPaintColorsButton } from '@/components/blocks/block-link-paint-colors-dialog';
 import { BlockCostCentersDialog } from '@/components/blocks/block-cost-centers-dialog';
+import { BlockCreateLineDialog } from '@/components/blocks/block-create-line-dialog';
+import { LineLabelAnchorPicker } from '@/components/blocks/line-label-anchor-picker';
+import { BlockLinesDialog } from '@/components/blocks/block-lines-dialog';
 import { BlockMapSettingsDialog } from '@/components/blocks/block-map-settings-dialog';
 import {
   BlockPlanMachineEditor,
   type MachineMapToolbarActions,
 } from '@/components/blocks/block-plan-machine-editor';
 import { PlanZoomViewport } from '@/components/blocks/plan-zoom-viewport';
-import { isMachineOnMap } from '@/lib/machine-map';
+import { isLineOnMap, isMachineOnMap } from '@/lib/machine-map';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,7 +52,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useBlockPlanImage } from '@/hooks/blocks/use-block-plan-image';
-import { blockDetailQueryKey, getBlock } from '@/services/blocks/block.service';
+import {
+  blockDetailQueryKey,
+  blockProductionOrdersQueryKey,
+  getBlock,
+  listBlockProductionOrders,
+} from '@/services/blocks/block.service';
 import { BLOCK_SECTOR_LABELS, type BlockDetail } from '@/types/block';
 import { cn } from '@/lib/utils';
 
@@ -86,7 +96,23 @@ type BlockInfoItemProps = {
   value: string | number;
 };
 
-function BlockInfoItem({ icon: Icon, label, value }: BlockInfoItemProps) {
+function BlockInfoItem({
+  icon: Icon,
+  label,
+  value,
+  compact = false,
+}: BlockInfoItemProps & { compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="min-w-0 text-center">
+        <dt className="flex items-center justify-center gap-1 text-[10px] leading-none text-muted-foreground">
+          <Icon className="size-3 shrink-0 text-brand" aria-hidden />
+          {label}
+        </dt>
+        <dd className="mt-1 truncate text-xs font-semibold tabular-nums">{value}</dd>
+      </div>
+    );
+  }
   return (
     <div className="flex min-w-0 items-start gap-2">
       <Icon className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
@@ -210,6 +236,14 @@ function MachineMapActionsBelow({
           {mapToolbarActions.draftRect.height.toFixed(1)}%
         </p>
       ) : null}
+      {mapToolbarActions.onMachineLabelAnchorChange &&
+      mapToolbarActions.machineLabelAnchor ? (
+        <LineLabelAnchorPicker
+          value={mapToolbarActions.machineLabelAnchor}
+          disabled={mapToolbarActions.isPending}
+          onChange={mapToolbarActions.onMachineLabelAnchorChange}
+        />
+      ) : null}
       <div className="flex w-full flex-col gap-1.5">
         <Button
           type="button"
@@ -294,12 +328,14 @@ function BlockMachinesColumn({
   onSelectMachine,
   mapToolbarActions,
   onOpenProductionOrders,
+  navigatingToProductionOrders,
 }: {
   block: BlockDetail;
   selectedMachineId: string | null;
   onSelectMachine: (machineId: string | null) => void;
   mapToolbarActions: MachineMapToolbarActions | null;
   onOpenProductionOrders: () => void;
+  navigatingToProductionOrders: boolean;
 }) {
   const [sortBy, setSortBy] = useState<MachineSort>('code-asc');
   const machines = useMemo(
@@ -436,16 +472,18 @@ function BlockMachinesColumn({
       <button
         type="button"
         onClick={onOpenProductionOrders}
+        disabled={navigatingToProductionOrders}
+        aria-busy={navigatingToProductionOrders}
         title="Ver OFs do bloco"
         className={cn(
-          'group shrink-0 flex w-full items-center gap-3 rounded-2xl border-2 border-primary bg-primary p-4 text-left transition-opacity hover:opacity-90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+          'group shrink-0 flex w-full items-center gap-3 rounded-2xl border-2 border-primary bg-primary p-4 text-left transition-opacity hover:opacity-90 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-90',
           blockSummaryCardEnter,
         )}
       >
         <span className="min-w-0 flex-1">
           <span className="flex gap-2 text-sm text-white">
             <Package className="size-4 shrink-0 text-white" aria-hidden />
-            Produzido / planejado
+            Produzido / planejado (hoje)
           </span>
           <span
             className="mt-2 block text-2xl font-bold leading-tight tracking-tight tabular-nums text-white sm:text-3xl"
@@ -462,10 +500,17 @@ function BlockMachinesColumn({
             {areaFormatter.format(block.expectedAreaToday)} m²
           </span>
         </span>
-        <ChevronRight
-          className="size-6 shrink-0 text-white/95 transition-transform duration-200 group-hover:translate-x-0.5"
-          aria-hidden
-        />
+        {navigatingToProductionOrders ? (
+          <Loader2Icon
+            className="size-6 shrink-0 animate-spin text-white"
+            aria-hidden
+          />
+        ) : (
+          <ChevronRight
+            className="size-6 shrink-0 text-white/95 transition-transform duration-200 group-hover:translate-x-0.5"
+            aria-hidden
+          />
+        )}
       </button>
     </aside>
   );
@@ -475,11 +520,13 @@ function BlockPlanView({
   block,
   onConfigure,
   selectedMachineId,
+  selectedLineId,
   onToolbarActionsChange,
 }: {
   block: BlockDetail;
   onConfigure: () => void;
   selectedMachineId: string | null;
+  selectedLineId: string | null;
   onToolbarActionsChange: (actions: MachineMapToolbarActions | null) => void;
 }) {
   const planImage = useBlockPlanImage(block.blockPlanImage);
@@ -510,7 +557,8 @@ function BlockPlanView({
         <BlockPlanMachineEditor
           block={block}
           imageSrc={planImage.src}
-          selectedMachineId={selectedMachineId}
+          selectedMachineId={selectedLineId ? null : selectedMachineId}
+          selectedLineId={selectedLineId}
           onToolbarActionsChange={onToolbarActionsChange}
         />
       </PlanZoomViewport>
@@ -532,12 +580,18 @@ function BlockPlanView({
 
 export function BlockDetailPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { blockId = '' } = useParams();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [navigatingToProductionOrders, setNavigatingToProductionOrders] =
+    useState(false);
   const [costCentersOpen, setCostCentersOpen] = useState(false);
+  const [linesOpen, setLinesOpen] = useState(false);
+  const [createLineOpen, setCreateLineOpen] = useState(false);
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(
     null,
   );
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [mapToolbarActions, setMapToolbarActions] =
     useState<MachineMapToolbarActions | null>(null);
 
@@ -549,6 +603,20 @@ export function BlockDetailPage() {
 
   const block = blockQuery.data;
   const goBack = () => navigate(BLOCKS_PATH);
+
+  const openProductionOrders = useCallback(() => {
+    if (!block || navigatingToProductionOrders) {
+      return;
+    }
+    setNavigatingToProductionOrders(true);
+    void queryClient.prefetchQuery({
+      queryKey: blockProductionOrdersQueryKey(block.id),
+      queryFn: () => listBlockProductionOrders(block.id),
+    });
+    startTransition(() => {
+      navigate(`${BLOCKS_PATH}/${block.id}/ofs`);
+    });
+  }, [block, navigate, navigatingToProductionOrders, queryClient]);
 
   if (blockQuery.isLoading) {
     return (
@@ -605,55 +673,152 @@ export function BlockDetailPage() {
           </div>
         </header>
 
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-4 py-5 text-sm">
-          <BlockInfoItem
-            icon={Paintbrush}
-            label="Setor"
-            value={BLOCK_SECTOR_LABELS[block.sector]}
-          />
-          <BlockInfoItem
-            icon={Cog}
-            label="Máquinas"
-            value={block.machinesCount}
-          />
-          <BlockInfoItem
-            icon={ClipboardList}
-            label="OFs"
-            value={block.productionOrdersCount}
-          />
-        </dl>
+        <div className="shrink-0 space-y-2 border-b border-border/60 py-3">
+          <dl className="grid grid-cols-4 gap-1">
+            <BlockInfoItem
+              compact
+              icon={Paintbrush}
+              label="Setor"
+              value={BLOCK_SECTOR_LABELS[block.sector]}
+            />
+            <BlockInfoItem
+              compact
+              icon={Cog}
+              label="Máquinas"
+              value={block.machinesCount}
+            />
+            <BlockInfoItem
+              compact
+              icon={Rows3}
+              label="Linhas"
+              value={block.lines?.length ?? 0}
+            />
+            <BlockInfoItem
+              compact
+              icon={ClipboardList}
+              label="OFs"
+              value={block.productionOrdersCount}
+            />
+          </dl>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto border-t border-border/60 pt-4">
-          <section className="grid gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="flex items-center gap-2 text-sm font-medium">
-                <Receipt className="size-4 text-muted-foreground" />
+          <div className="flex items-start gap-1.5 rounded-lg bg-muted/50 px-2 py-1.5">
+            <Receipt
+              className="mt-0.5 size-3 shrink-0 text-brand"
+              aria-hidden
+            />
+            <div className="min-h-0 min-w-0 flex-1">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 Centros de custo
-              </h2>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7"
-                onClick={() => setCostCentersOpen(true)}
-              >
-                <Pencil />
-                Editar
-              </Button>
+              </p>
+              <ul className="mt-1 max-h-14 space-y-0.5 overflow-y-auto">
+                {block.costCenters.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 text-[11px] leading-tight"
+                  >
+                    <span className="min-w-0 truncate text-muted-foreground">
+                      {item.sectorName}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="h-4 shrink-0 px-1 py-0 text-[10px] tabular-nums"
+                    >
+                      {item.costCenter}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="grid gap-2">
-              {block.costCenters.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-sm"
-                >
-                  <span className="min-w-0 truncate">{item.sectorName}</span>
-                  <Badge variant="outline">{item.costCenter}</Badge>
-                </li>
-              ))}
-            </ul>
-          </section>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0"
+              aria-label="Editar centros de custo"
+              onClick={() => setCostCentersOpen(true)}
+            >
+              <Pencil className="size-3" />
+            </Button>
+          </div>
         </div>
+
+        <section className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden pt-3">
+          <div className="flex shrink-0 items-center justify-between gap-2">
+            <h2 className="flex items-center gap-1.5 text-sm font-medium">
+              <Rows3 className="size-3.5 text-muted-foreground" />
+              Linhas de produção
+            </h2>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setLinesOpen(true)}
+            >
+              <Pencil className="size-3.5" />
+              Editar
+            </Button>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="w-full shrink-0"
+            onClick={() => {
+              if (!block.blockPlanImage) {
+                setSettingsOpen(true);
+                return;
+              }
+              setCreateLineOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            Nova linha
+          </Button>
+          <ul className="-mr-1 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+            {(block.lines ?? []).length === 0 ? (
+              <li className="rounded-lg border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+                Nenhuma linha. Clique em Nova linha para começar.
+              </li>
+            ) : (
+              (block.lines ?? []).map((line) => (
+                <li key={line.id}>
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                      selectedLineId === line.id
+                        ? 'bg-primary/15 font-semibold ring-1 ring-primary/35'
+                        : 'bg-muted/70 hover:bg-muted',
+                    )}
+                    onClick={() => {
+                      setSelectedMachineId(null);
+                      setSelectedLineId(line.id);
+                    }}
+                  >
+                    <span className="min-w-0 truncate">{line.code}</span>
+                    <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className="tabular-nums">
+                        {line.machineIds.length} máq.
+                      </span>
+                      {isLineOnMap(line) ? (
+                        <MapPin
+                          className="size-3.5 text-brand"
+                          aria-label="Com área no mapa"
+                        />
+                      ) : (
+                        <MapPinOff
+                          className="size-3.5 opacity-60"
+                          aria-label="Sem área no mapa"
+                        />
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
 
         {block.sector === 'PAINT' ? (
           <div className="mt-4 shrink-0 border-t border-border/60 pt-4">
@@ -679,6 +844,23 @@ export function BlockDetailPage() {
           <span className="pointer-events-none absolute top-3 left-3 z-10 text-sm font-semibold text-brand sm:top-4 sm:left-4">
             Mapa do bloco
           </span>
+          {selectedLineId ? (
+            <div
+              className="absolute top-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-brand/40 bg-card/95 px-3 py-1 text-xs font-medium shadow-sm sm:top-4"
+            >
+              Mapeando linha{' '}
+              {(block.lines ?? []).find((line) => line.id === selectedLineId)?.code ??
+                '…'}
+              <Button
+                type="button"
+                variant="link"
+                className="ml-2 h-auto p-0 text-xs"
+                onClick={() => setSelectedLineId(null)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          ) : null}
           <div className="absolute top-2 right-2 z-10 sm:top-3 sm:right-3">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -700,20 +882,94 @@ export function BlockDetailPage() {
               block={block}
               onConfigure={() => setSettingsOpen(true)}
               selectedMachineId={selectedMachineId}
+              selectedLineId={selectedLineId}
               onToolbarActionsChange={setMapToolbarActions}
             />
           </div>
+          {selectedLineId && mapToolbarActions ? (
+            <div className="flex flex-col gap-3 border-t border-border/60 p-3 sm:flex-row sm:flex-wrap sm:items-end">
+              {mapToolbarActions.onLineLabelAnchorChange &&
+              mapToolbarActions.lineLabelAnchor ? (
+                <LineLabelAnchorPicker
+                  className="w-full sm:w-auto sm:min-w-[11rem]"
+                  value={mapToolbarActions.lineLabelAnchor}
+                  disabled={mapToolbarActions.isPending}
+                  onChange={mapToolbarActions.onLineLabelAnchorChange}
+                />
+              ) : null}
+              <div className="flex flex-wrap gap-2 sm:ml-auto">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    mapToolbarActions.mapMode === 'draw' ? 'default' : 'outline'
+                  }
+                  onClick={mapToolbarActions.onStartDraw}
+                >
+                  Desenhar área
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    !mapToolbarActions.canConclude || mapToolbarActions.isPending
+                  }
+                  onClick={mapToolbarActions.onConclude}
+                >
+                  Salvar no mapa
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    !mapToolbarActions.canRemove || mapToolbarActions.isPending
+                  }
+                  onClick={mapToolbarActions.onRemove}
+                >
+                  Remover do mapa
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </main>
 
       <BlockMachinesColumn
         block={block}
-        selectedMachineId={selectedMachineId}
-        onSelectMachine={setSelectedMachineId}
-        mapToolbarActions={mapToolbarActions}
-        onOpenProductionOrders={() =>
-          navigate(`${BLOCKS_PATH}/${block.id}/ofs`)
-        }
+        selectedMachineId={selectedLineId ? null : selectedMachineId}
+        onSelectMachine={(id) => {
+          setSelectedLineId(null);
+          setSelectedMachineId(id);
+        }}
+        mapToolbarActions={selectedLineId ? null : mapToolbarActions}
+        navigatingToProductionOrders={navigatingToProductionOrders}
+        onOpenProductionOrders={openProductionOrders}
+      />
+
+      <BlockCreateLineDialog
+        block={block}
+        open={createLineOpen}
+        onOpenChange={setCreateLineOpen}
+        onStartMapping={(lineId) => {
+          setSelectedMachineId(null);
+          setSelectedLineId(lineId);
+        }}
+      />
+
+      <BlockLinesDialog
+        block={block}
+        open={linesOpen}
+        onOpenChange={setLinesOpen}
+        onMapLine={(lineId) => {
+          setSelectedMachineId(null);
+          setSelectedLineId(lineId);
+        }}
+        onLineDeleted={(lineId) => {
+          if (selectedLineId === lineId) {
+            setSelectedLineId(null);
+          }
+        }}
       />
 
       <BlockMapSettingsDialog

@@ -108,17 +108,33 @@ export class BlockService {
             updatedAt: true,
           },
         },
+        lines: {
+          where: { blockId: id },
+          orderBy: { code: 'asc' },
+          select: {
+            id: true,
+            code: true,
+            positionX: true,
+            positionY: true,
+            positionWidth: true,
+            positionHeight: true,
+            labelAnchor: true,
+            machines: { select: { id: true } },
+          },
+        },
         machines: {
           where: { blockId: id },
           orderBy: { code: 'asc' },
           select: {
             id: true,
             code: true,
+            lineId: true,
             costCenter: true,
             positionX: true,
             positionY: true,
             positionWidth: true,
             positionHeight: true,
+            labelAnchor: true,
           },
         },
       },
@@ -208,6 +224,16 @@ export class BlockService {
             updatedAt: block.blockPlanImage.updatedAt.toISOString(),
           }
         : null,
+      lines: block.lines.map((line) => ({
+        id: line.id,
+        code: line.code,
+        positionX: line.positionX,
+        positionY: line.positionY,
+        positionWidth: line.positionWidth,
+        positionHeight: line.positionHeight,
+        labelAnchor: line.labelAnchor,
+        machineIds: line.machines.map((machine) => machine.id),
+      })),
       machines: block.machines.map((machine) => ({
         ...machine,
         expectedPiecesToday: totalsByMachine.get(machine.id)?.pieces ?? 0,
@@ -396,6 +422,7 @@ export class BlockService {
       positionY: number;
       positionWidth: number;
       positionHeight: number;
+      labelAnchor?: 'TOP_LEFT' | 'TOP_RIGHT' | 'BOTTOM_LEFT' | 'BOTTOM_RIGHT';
     },
   ) {
     const machine = await this.prisma.machine.findFirst({
@@ -406,9 +433,14 @@ export class BlockService {
       throw new AppError('Máquina não encontrada neste bloco', 404);
     }
 
+    const { labelAnchor, ...mapFields } = position;
+
     return this.prisma.machine.update({
       where: { id: machineId },
-      data: position,
+      data: {
+        ...mapFields,
+        ...(labelAnchor !== undefined ? { labelAnchor } : {}),
+      },
       select: {
         id: true,
         code: true,
@@ -416,6 +448,181 @@ export class BlockService {
         positionY: true,
         positionWidth: true,
         positionHeight: true,
+        labelAnchor: true,
+      },
+    });
+  }
+
+  async createLine(blockId: string, code: string) {
+    const trimmed = code.trim();
+    if (!trimmed) {
+      throw new AppError('Informe o código da linha.', 400);
+    }
+
+    const block = await this.prisma.block.findUnique({
+      where: { id: blockId },
+      select: { id: true },
+    });
+    if (!block) {
+      throw new AppError('Bloco não encontrado', 404);
+    }
+
+    const existing = await this.prisma.line.findUnique({
+      where: { blockId_code: { blockId, code: trimmed } },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new AppError('Já existe uma linha com esse código neste bloco.', 409);
+    }
+
+    await this.prisma.line.create({
+      data: { blockId, code: trimmed },
+    });
+
+    return this.getBlock(blockId);
+  }
+
+  async deleteLine(blockId: string, lineId: string) {
+    const line = await this.prisma.line.findFirst({
+      where: { id: lineId, blockId },
+      select: { id: true, code: true },
+    });
+    if (!line) {
+      throw new AppError('Linha não encontrada neste bloco', 404);
+    }
+
+    await this.prisma.line.delete({ where: { id: lineId } });
+
+    return this.getBlock(blockId);
+  }
+
+  async updateLineMachines(
+    blockId: string,
+    lineId: string,
+    machineIds: string[],
+  ) {
+    const line = await this.prisma.line.findFirst({
+      where: { id: lineId, blockId },
+      select: { id: true },
+    });
+    if (!line) {
+      throw new AppError('Linha não encontrada neste bloco', 404);
+    }
+
+    const uniqueIds = [...new Set(machineIds)];
+    if (uniqueIds.length > 0) {
+      const machines = await this.prisma.machine.findMany({
+        where: { blockId, id: { in: uniqueIds } },
+        select: { id: true },
+      });
+      if (machines.length !== uniqueIds.length) {
+        throw new AppError('Uma ou mais máquinas não pertencem a este bloco.', 400);
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.machine.updateMany({
+        where: { blockId, lineId },
+        data: { lineId: null },
+      }),
+      ...(uniqueIds.length > 0
+        ? [
+            this.prisma.machine.updateMany({
+              where: { blockId, id: { in: uniqueIds } },
+              data: { lineId },
+            }),
+          ]
+        : []),
+    ]);
+
+    return this.getBlock(blockId);
+  }
+
+  async updateLineMapPosition(
+    blockId: string,
+    lineId: string,
+    position: {
+      positionX: number;
+      positionY: number;
+      positionWidth: number;
+      positionHeight: number;
+      labelAnchor?: 'TOP_LEFT' | 'TOP_RIGHT' | 'BOTTOM_LEFT' | 'BOTTOM_RIGHT';
+    },
+  ) {
+    const line = await this.prisma.line.findFirst({
+      where: { id: lineId, blockId },
+      select: { id: true, code: true },
+    });
+    if (!line) {
+      throw new AppError('Linha não encontrada neste bloco', 404);
+    }
+
+    const { labelAnchor, ...mapFields } = position;
+
+    return this.prisma.line.update({
+      where: { id: lineId },
+      data: {
+        ...mapFields,
+        ...(labelAnchor !== undefined ? { labelAnchor } : {}),
+      },
+      select: {
+        id: true,
+        code: true,
+        positionX: true,
+        positionY: true,
+        positionWidth: true,
+        positionHeight: true,
+        labelAnchor: true,
+      },
+    });
+  }
+
+  async updateLineLabelAnchor(
+    blockId: string,
+    lineId: string,
+    labelAnchor: 'TOP_LEFT' | 'TOP_RIGHT' | 'BOTTOM_LEFT' | 'BOTTOM_RIGHT',
+  ) {
+    const line = await this.prisma.line.findFirst({
+      where: { id: lineId, blockId },
+      select: { id: true },
+    });
+    if (!line) {
+      throw new AppError('Linha não encontrada neste bloco', 404);
+    }
+
+    await this.prisma.line.update({
+      where: { id: lineId },
+      data: { labelAnchor },
+    });
+
+    return this.getBlock(blockId);
+  }
+
+  async clearLineMapPosition(blockId: string, lineId: string) {
+    const line = await this.prisma.line.findFirst({
+      where: { id: lineId, blockId },
+      select: { id: true, code: true },
+    });
+    if (!line) {
+      throw new AppError('Linha não encontrada neste bloco', 404);
+    }
+
+    return this.prisma.line.update({
+      where: { id: lineId },
+      data: {
+        positionX: null,
+        positionY: null,
+        positionWidth: null,
+        positionHeight: null,
+      },
+      select: {
+        id: true,
+        code: true,
+        positionX: true,
+        positionY: true,
+        positionWidth: true,
+        positionHeight: true,
+        labelAnchor: true,
       },
     });
   }

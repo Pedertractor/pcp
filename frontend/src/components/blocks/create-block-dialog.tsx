@@ -24,11 +24,16 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useWebSession } from '@/hooks/auth/use-web-session';
 import { useCreateBlock } from '@/hooks/blocks/use-create-block';
+import { canAccessUserManagement } from '@/lib/role-access';
 import { cn } from '@/lib/utils';
 import { BLOCK_SECTORS, BLOCK_SECTOR_LABELS } from '@/types/block';
 
 export function CreateBlockDialog() {
+  const { data: user, isPending: isSessionPending } = useWebSession();
+  const canCreateBlock = canAccessUserManagement(user?.role);
+
   const {
     openDialog,
     setOpenDialog,
@@ -48,6 +53,10 @@ export function CreateBlockDialog() {
     handleSubmit,
     isSubmitting,
   } = useCreateBlock();
+
+  if (isSessionPending || !canCreateBlock) {
+    return null;
+  }
 
   return (
     <Dialog open={openDialog} onOpenChange={setOpenDialog}>

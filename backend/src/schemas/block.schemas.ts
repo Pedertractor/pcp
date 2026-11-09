@@ -1,5 +1,6 @@
 import z from 'zod';
 import { BlockSector } from '../generated/prisma/enums.js';
+import { blockLineSchema } from './line.schemas.js';
 
 export const costCenterSchema = z.object({
   id: z.string(),
@@ -36,11 +37,18 @@ export const listBlocksResponseSchema = z.array(blockSummarySchema);
 const machineSchema = z.object({
   id: z.string(),
   code: z.string(),
+  lineId: z.string().nullable(),
   costCenter: z.string().nullable(),
   positionX: z.number().nullable(),
   positionY: z.number().nullable(),
   positionWidth: z.number().nullable(),
   positionHeight: z.number().nullable(),
+  labelAnchor: z.enum([
+    'TOP_LEFT',
+    'TOP_RIGHT',
+    'BOTTOM_LEFT',
+    'BOTTOM_RIGHT',
+  ]),
   expectedPiecesToday: z.number(),
   /** m²: soma de área da peça * quantidade. */
   expectedAreaToday: z.number(),
@@ -52,6 +60,7 @@ const machineSchema = z.object({
 
 export const blockDetailSchema = blockSummarySchema.extend({
   blockPlanImage: blockPlanImageSchema.nullable(),
+  lines: z.array(blockLineSchema),
   machines: z.array(machineSchema),
   expectedPiecesToday: z.number(),
   expectedAreaToday: z.number(),

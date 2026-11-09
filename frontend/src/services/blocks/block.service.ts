@@ -1,11 +1,14 @@
 import { httpClient } from '@/lib/http-client';
 import type {
   BlockDetail,
+  BlockLine,
   BlockMachine,
   BlockProductionOrder,
   BlockSummary,
   CreateBlockInput,
+  LineLabelAnchor,
 } from '@/types/block';
+import type { BaseOfHeader, BaseOfProcess } from '@/types/of-process';
 
 export const blocksListQueryKey = ['blocks', 'list'] as const;
 
@@ -41,6 +44,58 @@ export async function listBlockProductionOrders(
 ): Promise<BlockProductionOrder[]> {
   return httpClient.get<BlockProductionOrder[]>(
     `/blocks/${blockId}/production-orders`,
+  );
+}
+
+export function blockProductionOrderBaseHeaderQueryKey(
+  blockId: string,
+  orderId: string,
+) {
+  return ['blocks', blockId, 'production-orders', orderId, 'base', 'header'] as const;
+}
+
+export function blockProductionOrderBaseProcessesQueryKey(
+  blockId: string,
+  orderId: string,
+) {
+  return ['blocks', blockId, 'production-orders', orderId, 'base', 'processes'] as const;
+}
+
+export function blockProductionOrderBasePartPreviewQueryKey(
+  blockId: string,
+  orderId: string,
+) {
+  return ['blocks', blockId, 'production-orders', orderId, 'base', 'part-preview'] as const;
+}
+
+export async function getBlockProductionOrderBaseHeader(
+  blockId: string,
+  orderId: string,
+): Promise<BaseOfHeader | null> {
+  return httpClient.get<BaseOfHeader | null>(
+    `/blocks/${blockId}/production-orders/${orderId}/base/of-header`,
+  );
+}
+
+export async function getBlockProductionOrderBaseProcesses(
+  blockId: string,
+  orderId: string,
+): Promise<BaseOfProcess[]> {
+  return httpClient.get<BaseOfProcess[]>(
+    `/blocks/${blockId}/production-orders/${orderId}/base/processes`,
+  );
+}
+
+export type BlockProductionOrderPartPreview = {
+  imageUrl: string | null;
+};
+
+export async function getBlockProductionOrderBasePartPreview(
+  blockId: string,
+  orderId: string,
+): Promise<BlockProductionOrderPartPreview> {
+  return httpClient.get<BlockProductionOrderPartPreview>(
+    `/blocks/${blockId}/production-orders/${orderId}/base/part-preview`,
   );
 }
 
@@ -101,6 +156,7 @@ export async function updateMachineMapPosition(
     positionY: number;
     positionWidth: number;
     positionHeight: number;
+    labelAnchor?: LineLabelAnchor;
   },
 ): Promise<BlockMachine> {
   return httpClient.patch<BlockMachine, typeof position>(
@@ -115,6 +171,71 @@ export async function removeMachineMapPosition(
 ): Promise<BlockMachine> {
   return httpClient.delete<BlockMachine>(
     `/blocks/${blockId}/machines/${machineId}/map-position`,
+  );
+}
+
+export async function deleteBlockLine(
+  blockId: string,
+  lineId: string,
+): Promise<BlockDetail> {
+  return httpClient.delete<BlockDetail>(`/blocks/${blockId}/lines/${lineId}`);
+}
+
+export async function createBlockLine(
+  blockId: string,
+  code: string,
+): Promise<BlockDetail> {
+  return httpClient.post<BlockDetail, { code: string }>(
+    `/blocks/${blockId}/lines`,
+    { code },
+  );
+}
+
+export async function updateLineMachines(
+  blockId: string,
+  lineId: string,
+  machineIds: string[],
+): Promise<BlockDetail> {
+  return httpClient.patch<BlockDetail, { machineIds: string[] }>(
+    `/blocks/${blockId}/lines/${lineId}/machines`,
+    { machineIds },
+  );
+}
+
+export async function updateLineMapPosition(
+  blockId: string,
+  lineId: string,
+  position: {
+    positionX: number;
+    positionY: number;
+    positionWidth: number;
+    positionHeight: number;
+    labelAnchor?: LineLabelAnchor;
+  },
+): Promise<BlockLine> {
+  return httpClient.patch<BlockLine, typeof position>(
+    `/blocks/${blockId}/lines/${lineId}/map-position`,
+    position,
+  );
+}
+
+export async function updateLineLabelAnchor(
+  blockId: string,
+  lineId: string,
+  labelAnchor: LineLabelAnchor,
+): Promise<BlockDetail> {
+  return httpClient.patch<BlockDetail, { labelAnchor: LineLabelAnchor }>(
+    `/blocks/${blockId}/lines/${lineId}/label-anchor`,
+    { labelAnchor },
+  );
+}
+
+export async function removeLineMapPosition(
+  blockId: string,
+  lineId: string,
+): Promise<BlockLine> {
+  return httpClient.delete<BlockLine>(
+    `/blocks/${blockId}/lines/${lineId}/map-position`,
   );
 }
 

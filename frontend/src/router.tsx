@@ -8,6 +8,7 @@ import { AppShell } from '@/layouts/app-shell';
 import { LoginPage } from '@/pages/auth/login-page';
 import { BlockDetailPage } from '@/pages/blocks/block-detail-page';
 import { BlockProductionOrdersPage } from '@/pages/blocks/block-production-orders-page';
+import { BlockProductionOrderProcessesPage } from '@/pages/blocks/block-production-order-processes-page';
 import { BlocksPage } from '@/pages/blocks/blocks-page';
 import { HomePage } from '@/pages/home-page';
 import { UsuariosPage } from '@/pages/usuarios-page';
@@ -26,6 +27,10 @@ export function AppRouter() {
           <Route
             path="/controle-produtivo/:blockId/ofs"
             element={<BlockProductionOrdersPage />}
+          />
+          <Route
+            path="/controle-produtivo/:blockId/ofs/:orderId/processes"
+            element={<BlockProductionOrderProcessesPage />}
           />
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />

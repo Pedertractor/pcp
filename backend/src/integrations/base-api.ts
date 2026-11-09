@@ -54,3 +54,36 @@ export async function getFromBaseApi<T>(
     throw new BaseApiError('Falha inesperada ao consultar a API base.');
   }
 }
+
+/** GET com 200 / 400 / 404 como respostas “esperadas” (ex.: peça não encontrada → 400). */
+export async function getFromBaseApiFlexible<T>(
+  path: string,
+  config?: AxiosRequestConfig,
+): Promise<BaseApiResult<T>> {
+  try {
+    const response = await baseApi.get<T>(path, {
+      ...config,
+      validateStatus: (status) =>
+        status === 200 || status === 404 || status === 400,
+    });
+
+    return { status: response.status, data: response.data };
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error(
+        'Base API error:',
+        error.code,
+        error.message,
+        error.response?.status,
+        error.response?.data,
+      );
+
+      throw new BaseApiError(
+        'Não foi possível consultar a API base. Verifique a conexão e as variáveis URL_BASE_API, NAME_APPLICATION e KEY.',
+      );
+    }
+
+    console.error('Unexpected base API error:', error);
+    throw new BaseApiError('Falha inesperada ao consultar a API base.');
+  }
+}

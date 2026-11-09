@@ -19,13 +19,22 @@ import {
 } from 'react-konva';
 import { toast } from 'sonner';
 
+import { MapLabelBalloon } from '@/components/blocks/map-label-balloon';
 import { usePlanZoom } from '@/components/blocks/plan-zoom-viewport';
 import { usePlanImageLayout } from '@/hooks/blocks/use-plan-image-layout';
 import { useDevicePixelRatio } from '@/hooks/use-device-pixel-ratio';
 import {
   clampMapRect,
+  getLineMapRect,
   getMachineMapRect,
+  isLineOnMap,
   isMachineOnMap,
+  LINE_MAP_FILL,
+  DEFAULT_LINE_LABEL_ANCHOR,
+  DEFAULT_MACHINE_LABEL_ANCHOR,
+  LINE_MAP_FILL_SELECTED,
+  LINE_MAP_STROKE,
+  LINE_MAP_STROKE_SELECTED,
   MIN_MACHINE_MAP_DRAG_PX,
   MIN_MACHINE_MAP_RENDER_PX,
   percentRectToPixels,
@@ -38,10 +47,12 @@ import {
   blockDetailQueryKey,
   blockPaintColorsQueryKey,
   listBlockPaintColors,
+  removeLineMapPosition,
   removeMachineMapPosition,
+  updateLineMapPosition,
   updateMachineMapPosition,
 } from '@/services/blocks/block.service';
-import type { BlockDetail, BlockMachine } from '@/types/block';
+import type { BlockDetail, BlockMachine, LineLabelAnchor } from '@/types/block';
 import sprayGunUrl from '@/public/pistola-de-pulverizacao-teste.png';
 
 /** Demo visual only: máquina cujo código contém este trecho (ex.: 728). */
@@ -52,6 +63,7 @@ type BlockPlanMachineEditorProps = {
   block: BlockDetail;
   imageSrc: string;
   selectedMachineId: string | null;
+  selectedLineId?: string | null;
   onToolbarActionsChange?: (actions: MachineMapToolbarActions | null) => void;
 };
 
@@ -68,6 +80,10 @@ export type MachineMapToolbarActions = {
   onStartDraw: () => void;
   onStartResize: () => void;
   onCancelEdit: () => void;
+  lineLabelAnchor?: LineLabelAnchor;
+  onLineLabelAnchorChange?: (anchor: LineLabelAnchor) => void;
+  machineLabelAnchor?: LineLabelAnchor;
+  onMachineLabelAnchorChange?: (anchor: LineLabelAnchor) => void;
 };
 
 const STROKE = 'hsl(142 76% 36%)';
@@ -109,7 +125,6 @@ function hexToRgba(hex: string, alpha: number): string {
 const MACHINE_LABEL_HEIGHT = 5;
 const MACHINE_LABEL_GAP = 1;
 const MACHINE_LABEL_GUTTER = MACHINE_LABEL_HEIGHT + MACHINE_LABEL_GAP + 1;
-const MACHINE_LABEL_INSET = 1.5;
 
 function renderBoxPixels(
   rect: MachineMapRect,
@@ -138,6 +153,28 @@ function pointerToPlant(
 
 function collectMachines(block: BlockDetail): BlockMachine[] {
   return [...block.machines].sort((a, b) => a.code.localeCompare(b.code));
+}
+
+function labelRectForMachine(
+  machine: BlockMachine,
+  selectedMachineId: string | null,
+  editingRects: Record<string, MachineMapRect>,
+  hideSelectedSaved: boolean,
+  createDraftRect: MachineMapRect | null,
+): MachineMapRect | null {
+  const displayed = displayRectForMachine(
+    machine,
+    selectedMachineId,
+    editingRects,
+    hideSelectedSaved,
+  );
+  if (displayed) {
+    return displayed;
+  }
+  if (machine.id === selectedMachineId && createDraftRect) {
+    return createDraftRect;
+  }
+  return null;
 }
 
 function displayRectForMachine(
@@ -372,6 +409,7 @@ export function BlockPlanMachineEditor({
   block,
   imageSrc,
   selectedMachineId,
+  selectedLineId = null,
   onToolbarActionsChange,
 }: BlockPlanMachineEditorProps) {
   const queryClient = useQueryClient();
@@ -395,6 +433,20 @@ export function BlockPlanMachineEditor({
     y: number;
   } | null>(null);
 
+  const lineDrawStartRef = useRef<{ x: number; y: number } | null>(null);
+  const lineCreateDraftRef = useRef<MachineMapRect | null>(null);
+  const [lineMapMode, setLineMapMode] = useState<'draw' | 'idle'>('draw');
+  const [lineIsDrawing, setLineIsDrawing] = useState(false);
+  const [lineCreateDraftRect, setLineCreateDraftRect] =
+    useState<MachineMapRect | null>(null);
+  const [lineEditingRect, setLineEditingRect] = useState<MachineMapRect | null>(
+    null,
+  );
+  const [lineLabelAnchorDraft, setLineLabelAnchorDraft] =
+    useState<LineLabelAnchor>(DEFAULT_LINE_LABEL_ANCHOR);
+  const [machineLabelAnchorDraft, setMachineLabelAnchorDraft] =
+    useState<LineLabelAnchor>(DEFAULT_MACHINE_LABEL_ANCHOR);
+
   const planRect = usePlanImageLayout(
     containerRef,
     naturalSize.width,
@@ -405,10 +457,16 @@ export function BlockPlanMachineEditor({
   // (keyed by pixelRatio below) recreates its canvases.
   Konva.pixelRatio = pixelRatio;
   const machines = useMemo(() => collectMachines(block), [block]);
+  const lines = block.lines ?? [];
 
   const selectedMachine = useMemo(
     () => machines.find((item) => item.id === selectedMachineId) ?? null,
     [machines, selectedMachineId],
+  );
+
+  const selectedLine = useMemo(
+    () => lines.find((item) => item.id === selectedLineId) ?? null,
+    [lines, selectedLineId],
   );
 
   /** Retângulo salvo no backend (só muda quando as posições persistidas mudam). */
@@ -429,15 +487,18 @@ export function BlockPlanMachineEditor({
     mutationFn: ({
       machineId,
       rect,
+      labelAnchor,
     }: {
       machineId: string;
       rect: MachineMapRect;
+      labelAnchor: LineLabelAnchor;
     }) =>
       updateMachineMapPosition(block.id, machineId, {
         positionX: rect.x,
         positionY: rect.y,
         positionWidth: rect.width,
         positionHeight: rect.height,
+        labelAnchor,
       }),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({
@@ -480,7 +541,92 @@ export function BlockPlanMachineEditor({
     },
   });
 
-  const mapActionPending = saveMutation.isPending || removeMutation.isPending;
+  const lineSaveMutation = useMutation({
+    mutationFn: ({
+      rect,
+      labelAnchor,
+    }: {
+      rect: MachineMapRect;
+      labelAnchor: LineLabelAnchor;
+    }) => {
+      if (!selectedLineId) {
+        throw new Error('Linha não selecionada');
+      }
+      return updateLineMapPosition(block.id, selectedLineId, {
+        positionX: rect.x,
+        positionY: rect.y,
+        positionWidth: rect.width,
+        positionHeight: rect.height,
+        labelAnchor,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: blockDetailQueryKey(block.id),
+      });
+      setLineEditingRect(null);
+      setLineCreateDraftRect(null);
+      lineCreateDraftRef.current = null;
+      setLineMapMode('idle');
+      toast.success('Área da linha salva no mapa');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const lineRemoveMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedLineId) {
+        throw new Error('Linha não selecionada');
+      }
+      return removeLineMapPosition(block.id, selectedLineId);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: blockDetailQueryKey(block.id),
+      });
+      setLineEditingRect(null);
+      setLineMapMode('draw');
+      toast.success('Linha removida do mapa');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  useEffect(() => {
+    setLineMapMode(
+      selectedLine && isLineOnMap(selectedLine) ? 'idle' : 'draw',
+    );
+    setLineEditingRect(null);
+    setLineCreateDraftRect(null);
+    lineCreateDraftRef.current = null;
+    lineDrawStartRef.current = null;
+    setLineIsDrawing(false);
+  }, [
+    selectedLineId,
+    selectedLine?.positionX,
+    selectedLine?.positionY,
+    selectedLine?.positionWidth,
+    selectedLine?.positionHeight,
+    selectedLine?.labelAnchor,
+    selectedLine,
+  ]);
+
+  useEffect(() => {
+    setLineLabelAnchorDraft(
+      selectedLine?.labelAnchor ?? DEFAULT_LINE_LABEL_ANCHOR,
+    );
+  }, [selectedLineId, selectedLine?.labelAnchor]);
+
+  useEffect(() => {
+    setMachineLabelAnchorDraft(
+      selectedMachine?.labelAnchor ?? DEFAULT_MACHINE_LABEL_ANCHOR,
+    );
+  }, [selectedMachineId, selectedMachine?.labelAnchor]);
+
+  const mapActionPending =
+    saveMutation.isPending ||
+    removeMutation.isPending ||
+    lineSaveMutation.isPending ||
+    lineRemoveMutation.isPending;
 
   const pendingRect = selectedMachineId
     ? editingRects[selectedMachineId]
@@ -488,16 +634,39 @@ export function BlockPlanMachineEditor({
 
   const hideSelectedSaved = mapMode === 'draw';
 
+  const machineEffectiveRect = useMemo((): MachineMapRect | null => {
+    if (pendingRect) {
+      return pendingRect;
+    }
+    if (createDraftRect) {
+      return createDraftRect;
+    }
+    if (selectedMachine && isMachineOnMap(selectedMachine)) {
+      return getMachineMapRect(selectedMachine);
+    }
+    return null;
+  }, [createDraftRect, pendingRect, selectedMachine]);
+
   const canConclude = useMemo(() => {
-    if (!selectedMachineId || !selectedMachine || !pendingRect) {
+    if (!selectedMachineId || !selectedMachine || !machineEffectiveRect) {
       return false;
     }
+    const savedAnchor =
+      selectedMachine.labelAnchor ?? DEFAULT_MACHINE_LABEL_ANCHOR;
+    const anchorChanged = machineLabelAnchorDraft !== savedAnchor;
     if (!isMachineOnMap(selectedMachine)) {
       return true;
     }
     const saved = getMachineMapRect(selectedMachine);
-    return saved !== null && !rectsEqual(pendingRect, saved);
-  }, [editingRects, pendingRect, selectedMachine, selectedMachineId]);
+    const rectChanged =
+      saved !== null && !rectsEqual(machineEffectiveRect, saved);
+    return rectChanged || anchorChanged;
+  }, [
+    machineEffectiveRect,
+    machineLabelAnchorDraft,
+    selectedMachine,
+    selectedMachineId,
+  ]);
 
   const canRemoveFromMap = useMemo(() => {
     if (!selectedMachineId || !selectedMachine) {
@@ -607,12 +776,36 @@ export function BlockPlanMachineEditor({
 
   function handleStageMouseDown(event: Konva.KonvaEventObject<MouseEvent>) {
     setContextMenu(null);
+    const stage = event.target.getStage();
+    if (!stage) {
+      return;
+    }
+
+    if (selectedLineId && lineMapMode === 'draw') {
+      if (event.target !== stage) {
+        return;
+      }
+      const pointer = stage.getPointerPosition();
+      if (!pointer) {
+        return;
+      }
+      const plantPoint = pointerToPlant(
+        pointer,
+        planRect.width,
+        planRect.height,
+      );
+      setLineIsDrawing(true);
+      lineDrawStartRef.current = plantPoint;
+      setLineCreateDraftRect(null);
+      lineCreateDraftRef.current = null;
+      return;
+    }
+
     if (mapMode !== 'draw' || !selectedMachineId) {
       return;
     }
 
-    const stage = event.target.getStage();
-    if (!stage || event.target !== stage) {
+    if (event.target !== stage) {
       return;
     }
 
@@ -629,6 +822,29 @@ export function BlockPlanMachineEditor({
   }
 
   function handleStageMouseMove(event: Konva.KonvaEventObject<MouseEvent>) {
+    const lineStart = lineDrawStartRef.current;
+    if (selectedLineId && lineMapMode === 'draw' && lineIsDrawing && lineStart) {
+      const stage = event.target.getStage();
+      const pointer = stage?.getPointerPosition();
+      if (!pointer) {
+        return;
+      }
+      const plantPoint = pointerToPlant(
+        pointer,
+        planRect.width,
+        planRect.height,
+      );
+      const next = rectFromCornerDrag(
+        lineStart,
+        plantPoint,
+        planRect.width,
+        planRect.height,
+      );
+      lineCreateDraftRef.current = next;
+      setLineCreateDraftRect(next);
+      return;
+    }
+
     const start = drawStartRef.current;
     if (mapMode !== 'draw' || !isDrawing || !start || !selectedMachineId) {
       return;
@@ -652,6 +868,22 @@ export function BlockPlanMachineEditor({
   }
 
   function handleStageMouseUp() {
+    if (selectedLineId && lineMapMode === 'draw' && lineIsDrawing) {
+      setLineIsDrawing(false);
+      lineDrawStartRef.current = null;
+      const draft = lineCreateDraftRef.current;
+      if (!draft) {
+        setLineCreateDraftRect(null);
+        toast.error('Desenhe uma área maior no mapa.');
+        return;
+      }
+      setLineEditingRect(clampMapRect(draft));
+      setLineCreateDraftRect(null);
+      lineCreateDraftRef.current = null;
+      setLineMapMode('idle');
+      return;
+    }
+
     if (mapMode !== 'draw' || !isDrawing || !selectedMachineId) {
       return;
     }
@@ -702,12 +934,21 @@ export function BlockPlanMachineEditor({
   }
 
   const handleConcludePosition = useCallback(() => {
-    if (!selectedMachineId || !pendingRect) {
+    if (!selectedMachineId || !machineEffectiveRect) {
       toast.error('Desenhe uma área no mapa antes de salvar.');
       return;
     }
-    saveMutation.mutate({ machineId: selectedMachineId, rect: pendingRect });
-  }, [pendingRect, saveMutation, selectedMachineId]);
+    saveMutation.mutate({
+      machineId: selectedMachineId,
+      rect: machineEffectiveRect,
+      labelAnchor: machineLabelAnchorDraft,
+    });
+  }, [
+    machineEffectiveRect,
+    machineLabelAnchorDraft,
+    saveMutation,
+    selectedMachineId,
+  ]);
 
   const handleRemoveFromMap = useCallback(() => {
     if (!selectedMachineId || !selectedMachine) {
@@ -723,8 +964,107 @@ export function BlockPlanMachineEditor({
     removeMutation.mutate(selectedMachineId);
   }, [cancelEdit, removeMutation, selectedMachine, selectedMachineId]);
 
+  const linePendingRect =
+    lineEditingRect ?? lineCreateDraftRect ?? null;
+
+  const lineEffectiveRect = useMemo((): MachineMapRect | null => {
+    if (linePendingRect) {
+      return linePendingRect;
+    }
+    if (selectedLine && isLineOnMap(selectedLine)) {
+      return getLineMapRect(selectedLine);
+    }
+    return null;
+  }, [linePendingRect, selectedLine]);
+
+  const lineCanConclude = useMemo(() => {
+    if (!selectedLineId || !selectedLine || !lineEffectiveRect) {
+      return false;
+    }
+    const savedAnchor =
+      selectedLine.labelAnchor ?? DEFAULT_LINE_LABEL_ANCHOR;
+    const anchorChanged = lineLabelAnchorDraft !== savedAnchor;
+    if (!isLineOnMap(selectedLine)) {
+      return true;
+    }
+    const saved = getLineMapRect(selectedLine);
+    const rectChanged =
+      saved !== null && !rectsEqual(lineEffectiveRect, saved);
+    return rectChanged || anchorChanged;
+  }, [
+    lineEffectiveRect,
+    lineLabelAnchorDraft,
+    selectedLine,
+    selectedLineId,
+  ]);
+
+  const lineStartDraw = useCallback(() => {
+    setLineMapMode('draw');
+    setLineEditingRect(null);
+    setLineCreateDraftRect(null);
+    lineCreateDraftRef.current = null;
+    lineDrawStartRef.current = null;
+    setLineIsDrawing(false);
+  }, []);
+
+  const lineCancelEdit = useCallback(() => {
+    setLineEditingRect(null);
+    setLineCreateDraftRect(null);
+    lineCreateDraftRef.current = null;
+    lineDrawStartRef.current = null;
+    setLineIsDrawing(false);
+    setLineMapMode(
+      selectedLine && isLineOnMap(selectedLine) ? 'idle' : 'draw',
+    );
+  }, [selectedLine]);
+
+  const handleLineConclude = useCallback(() => {
+    if (!lineEffectiveRect) {
+      toast.error('Desenhe uma área no mapa antes de salvar.');
+      return;
+    }
+    lineSaveMutation.mutate({
+      rect: lineEffectiveRect,
+      labelAnchor: lineLabelAnchorDraft,
+    });
+  }, [lineEffectiveRect, lineLabelAnchorDraft, lineSaveMutation]);
+
+  const handleLineRemoveFromMap = useCallback(() => {
+    if (!selectedLine) {
+      return;
+    }
+    if (linePendingRect || !isLineOnMap(selectedLine)) {
+      lineCancelEdit();
+      return;
+    }
+    lineRemoveMutation.mutate();
+  }, [lineCancelEdit, linePendingRect, lineRemoveMutation, selectedLine]);
+
   useEffect(() => {
     if (!onToolbarActionsChange) {
+      return;
+    }
+    if (selectedLineId && selectedLine) {
+      onToolbarActionsChange({
+        canConclude: lineCanConclude,
+        canRemove:
+          Boolean(linePendingRect) ||
+          (selectedLine && isLineOnMap(selectedLine)),
+        isPending: mapActionPending,
+        mapMode: lineMapMode === 'draw' ? 'draw' : 'idle',
+        draftRect: linePendingRect,
+        onConclude: handleLineConclude,
+        onRemove: handleLineRemoveFromMap,
+        onStartDraw: lineStartDraw,
+        onStartResize: () => {
+          toast.message(
+            'Para linhas, desenhe uma nova área (substitui a anterior ao salvar).',
+          );
+        },
+        onCancelEdit: lineCancelEdit,
+        lineLabelAnchor: lineLabelAnchorDraft,
+        onLineLabelAnchorChange: setLineLabelAnchorDraft,
+      });
       return;
     }
     if (!selectedMachineId || !selectedMachine) {
@@ -742,6 +1082,8 @@ export function BlockPlanMachineEditor({
       onStartDraw: startDraw,
       onStartResize: startResize,
       onCancelEdit: cancelEdit,
+      machineLabelAnchor: machineLabelAnchorDraft,
+      onMachineLabelAnchorChange: setMachineLabelAnchorDraft,
     });
   }, [
     canConclude,
@@ -749,24 +1091,68 @@ export function BlockPlanMachineEditor({
     cancelEdit,
     createDraftRect,
     handleConcludePosition,
+    machineLabelAnchorDraft,
+    handleLineConclude,
+    handleLineRemoveFromMap,
     handleRemoveFromMap,
+    lineCanConclude,
+    lineCancelEdit,
+    lineMapMode,
+    linePendingRect,
+    lineStartDraw,
     mapActionPending,
     mapMode,
     onToolbarActionsChange,
     pendingRect,
+    selectedLine,
+    selectedLineId,
     selectedMachine,
     selectedMachineId,
     startDraw,
     startResize,
+    lineLabelAnchorDraft,
   ]);
 
-  const mappingActive = selectedMachineId !== null && selectedMachine !== null;
+  const mappingActive =
+    !selectedLineId && selectedMachineId !== null && selectedMachine !== null;
+  const lineMappingActive = Boolean(selectedLineId && lineMapMode === 'draw');
   const stageReady = planRect.width > 0 && planRect.height > 0;
 
   const planZoom = usePlanZoom();
 
+  const savedLineMapRectForZoom = useMemo((): MachineMapRect | null => {
+    if (!selectedLine || !isLineOnMap(selectedLine)) {
+      return null;
+    }
+    return getLineMapRect(selectedLine);
+  }, [
+    selectedLine,
+    selectedLine?.positionX,
+    selectedLine?.positionY,
+    selectedLine?.positionWidth,
+    selectedLine?.positionHeight,
+  ]);
+
   useEffect(() => {
     if (!planZoom || !stageReady) {
+      return;
+    }
+    if (selectedLineId && selectedLine) {
+      if (lineMapMode === 'draw' || !savedLineMapRectForZoom) {
+        planZoom.resetView();
+        return;
+      }
+      const pixels = percentRectToPixels(
+        savedLineMapRectForZoom,
+        planRect.width,
+        planRect.height,
+      );
+      planZoom.focusRect({
+        x: planRect.left + pixels.x,
+        y: planRect.top + pixels.y - MACHINE_LABEL_GUTTER,
+        width: pixels.width,
+        height: pixels.height + MACHINE_LABEL_GUTTER,
+      });
       return;
     }
     if (!selectedMachineId) {
@@ -774,14 +1160,11 @@ export function BlockPlanMachineEditor({
       return;
     }
 
-    // Sem mapeamento ou modo "desenhar caixa": estaca zero (100%) para o usuário dar zoom manual onde quiser.
     if (hideSelectedSaved || !savedMapRectForZoom) {
       planZoom.resetView();
       return;
     }
 
-    // Já mapeada (resize/visualizar): amplia e centraliza na posição salva — não depende de editingRects
-    // para não brigar com o zoom durante arrastar/redimensionar.
     const pixels = percentRectToPixels(
       savedMapRectForZoom,
       planRect.width,
@@ -794,15 +1177,19 @@ export function BlockPlanMachineEditor({
       height: pixels.height + MACHINE_LABEL_GUTTER,
     });
   }, [
-    planZoom,
-    selectedMachineId,
-    stageReady,
     hideSelectedSaved,
-    savedMapRectForZoom,
+    lineMapMode,
+    planRect.height,
     planRect.left,
     planRect.top,
     planRect.width,
-    planRect.height,
+    planZoom,
+    savedLineMapRectForZoom,
+    savedMapRectForZoom,
+    selectedLine,
+    selectedLineId,
+    selectedMachineId,
+    stageReady,
   ]);
   const minTransformPx = MIN_MACHINE_MAP_DRAG_PX;
 
@@ -852,12 +1239,12 @@ export function BlockPlanMachineEditor({
 
       {stageReady ? (
         <div
-          {...(mappingActive ? { 'data-map-interactive': true } : {})}
+          {...(mappingActive || lineMappingActive ? { 'data-map-interactive': true } : {})}
           className={cn(
             'absolute touch-none',
-            mappingActive &&
-              mapMode === 'draw' &&
-              'cursor-crosshair ring-2 ring-primary/40 ring-inset',
+            (mappingActive && mapMode === 'draw') || lineMappingActive
+              ? 'cursor-crosshair ring-2 ring-primary/40 ring-inset'
+              : undefined,
           )}
           style={{
             left: planRect.left,
@@ -871,11 +1258,82 @@ export function BlockPlanMachineEditor({
             key={pixelRatio}
             width={planRect.width}
             height={planRect.height + MACHINE_LABEL_GUTTER}
-            onMouseDown={mappingActive ? handleStageMouseDown : undefined}
-            onMouseMove={mappingActive ? handleStageMouseMove : undefined}
-            onMouseUp={mappingActive ? handleStageMouseUp : undefined}
-            onMouseLeave={mappingActive ? handleStageMouseUp : undefined}
+            onMouseDown={
+              mappingActive || lineMappingActive ? handleStageMouseDown : undefined
+            }
+            onMouseMove={
+              mappingActive || lineMappingActive ? handleStageMouseMove : undefined
+            }
+            onMouseUp={
+              mappingActive || lineMappingActive ? handleStageMouseUp : undefined
+            }
+            onMouseLeave={
+              mappingActive || lineMappingActive ? handleStageMouseUp : undefined
+            }
           >
+            <Layer listening={false}>
+              {lines.map((line) => {
+                const isSelected = line.id === selectedLineId;
+                let rect: MachineMapRect | null = null;
+                if (isSelected) {
+                  if (lineEditingRect) {
+                    rect = lineEditingRect;
+                  } else if (lineMapMode === 'draw' && lineCreateDraftRect) {
+                    rect = lineCreateDraftRect;
+                  } else if (isLineOnMap(line)) {
+                    rect = getLineMapRect(line);
+                  }
+                } else if (isLineOnMap(line)) {
+                  rect = getLineMapRect(line);
+                }
+                if (!rect) {
+                  return null;
+                }
+                const box = renderBoxPixels(
+                  rect,
+                  planRect.width,
+                  planRect.height,
+                );
+                const stroke = isSelected
+                  ? LINE_MAP_STROKE_SELECTED
+                  : LINE_MAP_STROKE;
+                return (
+                  <Group key={`line-${line.id}`} listening={false}>
+                    <Rect
+                      {...box}
+                      fill={isSelected ? LINE_MAP_FILL_SELECTED : LINE_MAP_FILL}
+                      stroke={stroke}
+                      strokeWidth={isSelected ? 3 : 2.25}
+                      dash={[8, 5]}
+                    />
+                    <MapLabelBalloon
+                      text={line.code}
+                      anchor={
+                        isSelected
+                          ? lineLabelAnchorDraft
+                          : (line.labelAnchor ?? DEFAULT_LINE_LABEL_ANCHOR)
+                      }
+                      box={box}
+                      fontSize={isSelected ? 12 : 10}
+                      padding={isSelected ? 5 : 3}
+                      fill={
+                        isSelected
+                          ? 'hsl(220 10% 22%)'
+                          : 'hsla(220, 10%, 96%, 0.92)'
+                      }
+                      textFill={
+                        isSelected ? 'hsl(0 0% 98%)' : 'hsl(220 9% 38%)'
+                      }
+                      stroke={stroke}
+                      strokeWidth={isSelected ? 1.25 : 1}
+                      cornerRadius={isSelected ? 4 : 3}
+                      pointerWidth={isSelected ? 8 : 6}
+                      pointerHeight={isSelected ? 5 : 4}
+                    />
+                  </Group>
+                );
+              })}
+            </Layer>
             <Layer>
               {machines.map((machine) => {
                 const rect = displayRectForMachine(
@@ -964,48 +1422,52 @@ export function BlockPlanMachineEditor({
                 />
               ) : null}
             </Layer>
+            <Layer listening={false}>
+              {machines.map((machine) => {
+                const rect = labelRectForMachine(
+                  machine,
+                  selectedMachineId,
+                  editingRects,
+                  hideSelectedSaved,
+                  createDraftRect,
+                );
+                if (!rect) {
+                  return null;
+                }
+                const box = renderBoxPixels(
+                  rect,
+                  planRect.width,
+                  planRect.height,
+                );
+                const selected = machine.id === selectedMachineId;
+                const shortSide = Math.min(box.width, box.height);
+                const fontSize = Math.max(9, Math.min(11, shortSide * 0.12));
+                return (
+                  <MapLabelBalloon
+                    key={`machine-label-${machine.id}`}
+                    text={machine.code}
+                    anchor={
+                      selected
+                        ? machineLabelAnchorDraft
+                        : (machine.labelAnchor ?? DEFAULT_MACHINE_LABEL_ANCHOR)
+                    }
+                    box={box}
+                    fontSize={fontSize}
+                    padding={fontSize >= 10 ? 4 : 3}
+                    fill={
+                      selected ? 'hsl(142 40% 18%)' : 'hsla(0, 0%, 100%, 0.94)'
+                    }
+                    textFill={selected ? 'hsl(0 0% 98%)' : 'hsl(142 76% 22%)'}
+                    stroke={selected ? STROKE_SELECTED : STROKE}
+                    strokeWidth={selected ? 1.25 : 1}
+                    cornerRadius={3}
+                    pointerWidth={selected ? 7 : 6}
+                    pointerHeight={selected ? 4 : 3}
+                  />
+                );
+              })}
+            </Layer>
           </Stage>
-
-          <div className="pointer-events-none absolute inset-0">
-            {machines.map((machine) => {
-              const rect = displayRectForMachine(
-                machine,
-                selectedMachineId,
-                editingRects,
-                hideSelectedSaved,
-              );
-              if (!rect) {
-                return null;
-              }
-              const box = renderBoxPixels(
-                rect,
-                planRect.width,
-                planRect.height,
-              );
-              const shortSide = Math.min(box.width, box.height);
-              const labelFont = Math.max(3, Math.min(8, shortSide * 0.11));
-              const labelPadY = Math.max(1, labelFont * 0.18);
-              const labelPadX = Math.max(2, labelFont * 0.4);
-              return (
-                <span
-                  key={machine.id}
-                  className="absolute font-bold tabular-nums whitespace-nowrap"
-                  style={{
-                    left: box.x + MACHINE_LABEL_INSET,
-                    top: box.y + box.height - MACHINE_LABEL_INSET,
-                    fontSize: labelFont,
-                    lineHeight: 1,
-                    padding: `${labelPadY}px ${labelPadX}px`,
-                    color: '#1c1c1c',
-                    background: '#ffffff',
-                    transform: 'translateY(-100%)',
-                  }}
-                >
-                  {machine.code}
-                </span>
-              );
-            })}
-          </div>
 
           {contextMenu ? (
             <div

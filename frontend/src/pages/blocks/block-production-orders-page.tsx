@@ -240,6 +240,9 @@ export function BlockProductionOrdersPage() {
 
   const goBack = () => navigate(`/controle-produtivo/${blockId}`);
 
+  const isOrdersInitialLoad =
+    ordersQuery.isPending && ordersQuery.data === undefined;
+
   const selectAllStatusDates = useCallback(() => {
     setFilterStatusDate(ALL);
   }, []);
@@ -278,6 +281,17 @@ export function BlockProductionOrdersPage() {
         </div>
       </header>
 
+      {isOrdersInitialLoad ? (
+        <div
+          className="flex min-h-[55dvh] flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2Icon className="size-9 animate-spin text-brand" aria-hidden />
+          <p>Carregando OFs do bloco…</p>
+        </div>
+      ) : (
+        <>
       <div className="flex flex-wrap items-center gap-4 border-b border-border/60 pb-4 text-sm">
         <span className="flex items-center gap-1.5">
           <ClipboardList className="size-4 text-brand" aria-hidden />
@@ -333,12 +347,6 @@ export function BlockProductionOrdersPage() {
         />
       ) : null}
 
-      {ordersQuery.isLoading ? (
-        <div className="flex min-h-[30vh] items-center justify-center">
-          <Loader2Icon className="size-8 animate-spin text-muted-foreground" />
-        </div>
-      ) : null}
-
       {ordersQuery.isError ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <p className="text-sm text-destructive">
@@ -383,7 +391,26 @@ export function BlockProductionOrdersPage() {
                 </TableRow>
               ) : (
                 filteredOrders.map((order) => (
-                  <TableRow key={order.id}>
+                  <TableRow
+                    key={order.id}
+                    className="cursor-pointer hover:bg-muted/45"
+                    title="Abrir processos da OF (API base)"
+                    tabIndex={0}
+                    role="button"
+                    onClick={() =>
+                      navigate(
+                        `/controle-produtivo/${blockId}/ofs/${order.id}/processes`,
+                      )
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        navigate(
+                          `/controle-produtivo/${blockId}/ofs/${order.id}/processes`,
+                        );
+                      }
+                    }}
+                  >
                     <TableCell className="font-medium">{order.ofNumber}</TableCell>
                     <TableCell>{order.partCode}</TableCell>
                     <TableCell>{order.machineCode ?? '—'}</TableCell>
@@ -436,6 +463,8 @@ export function BlockProductionOrdersPage() {
           </Table>
         </div>
       ) : null}
+        </>
+      )}
     </div>
   );
 }

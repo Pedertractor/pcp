@@ -100,6 +100,7 @@ model Block {
 
   blockPlanImage   BlockPlanImage?   @relation(fields: [blockPlanImageId], references: [id], onDelete: SetNull)
   costCenters      CostCenter[]
+  lines            Line[]
   machines         Machine[]
   productionOrders ProductionOrder[]
   productionProcesses ProductionProcess[]
@@ -150,6 +151,35 @@ model BlockPaintColor {
   @@map("block_paint_colors")
 }
 
+enum LineLabelAnchor {
+  TOP_LEFT
+  TOP_RIGHT
+  BOTTOM_LEFT
+  BOTTOM_RIGHT
+
+  @@map("line_label_anchor")
+}
+
+model Line {
+  id             String           @id @default(uuid())
+  blockId        String           @map("block_id")
+  code           String
+  positionX      Float?           @map("position_x")
+  positionY      Float?           @map("position_y")
+  positionWidth  Float?           @map("position_width")
+  positionHeight Float?           @map("position_height")
+  labelAnchor    LineLabelAnchor  @default(TOP_LEFT) @map("label_anchor")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  block    Block     @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  machines Machine[]
+
+  @@unique([blockId, code])
+  @@index([blockId])
+  @@map("lines")
+}
+
 model Machine {
   id         String  @id @default(uuid())
   code       String  @unique
@@ -158,13 +188,17 @@ model Machine {
   positionY  Float?  @map("position_y")
   positionWidth  Float? @map("position_width")
   positionHeight Float? @map("position_height")
+  labelAnchor    LineLabelAnchor @default(BOTTOM_LEFT) @map("label_anchor")
   blockId    String  @map("block_id")
+  lineId     String? @map("line_id")
 
   block            Block             @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  line             Line?             @relation(fields: [lineId], references: [id], onDelete: SetNull)
   productionOrders ProductionOrder[]
   productionProcesses ProductionProcess[]
 
   @@index([blockId])
+  @@index([lineId])
   @@map("machines")
 }
 

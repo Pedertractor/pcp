@@ -12,7 +12,20 @@ import {
   updateBlockPaintColorController,
 } from '../controllers/paint-color.controller.js';
 import { syncBlockPlanningFromXlsController } from '../controllers/planning-sync.controller.js';
+import {
+  getBlockProductionOrderBaseHeaderController,
+  getBlockProductionOrderBasePartPreviewController,
+  getBlockProductionOrderBaseProcessesController,
+} from '../controllers/block-production-order-base.controller.js';
 import { listBlockProductionOrdersController } from '../controllers/production-order.controller.js';
+import {
+  createBlockLineController,
+  deleteBlockLineController,
+  clearLineMapPositionController,
+  updateLineLabelAnchorController,
+  updateLineMachinesController,
+  updateLineMapPositionController,
+} from '../controllers/block-line.controller.js';
 import {
   clearMachineMapPositionController,
   updateMachineMapPositionController,
@@ -28,7 +41,14 @@ import {
   type UpdateBlockCostCentersBody,
 } from '../schemas/block.schemas.js';
 import { planningSyncResultSchema } from '../schemas/planning-sync.schemas.js';
-import { blockProductionOrdersListResponseSchema } from '../schemas/production-order.schemas.js';
+import {
+  blockProductionOrderBaseHeaderResponseSchema,
+  blockProductionOrderBasePartPreviewResponseSchema,
+  blockProductionOrderBaseProcessesResponseSchema,
+  blockProductionOrderParamsSchema,
+  blockProductionOrdersListResponseSchema,
+  type BlockProductionOrderParams,
+} from '../schemas/production-order.schemas.js';
 import {
   blockPaintColorItemSchema,
   blockPaintColorParamsSchema,
@@ -37,6 +57,19 @@ import {
   type BlockPaintColorParams,
   type UpdateBlockPaintColorBody,
 } from '../schemas/paint-color.schemas.js';
+import {
+  createBlockLineBodySchema,
+  lineMapPositionBodySchema,
+  lineMapPositionResponseSchema,
+  lineParamsSchema,
+  updateLineLabelAnchorBodySchema,
+  updateLineMachinesBodySchema,
+  type CreateBlockLineBody,
+  type LineMapPositionBody,
+  type LineParams,
+  type UpdateLineLabelAnchorBody,
+  type UpdateLineMachinesBody,
+} from '../schemas/line.schemas.js';
 import {
   machineMapPositionBodySchema,
   machineMapPositionParamsSchema,
@@ -179,6 +212,69 @@ export function blockRoutes(fastify: FastifyInstance) {
     listBlockProductionOrdersController,
   );
 
+  fastify.get<{ Params: BlockProductionOrderParams }>(
+    '/:id/production-orders/:orderId/base/of-header',
+    {
+      schema: {
+        summary:
+          'Get OF header from base API for a production order in this block',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: blockProductionOrderParamsSchema,
+        response: {
+          200: blockProductionOrderBaseHeaderResponseSchema.describe(
+            'OF header from base API or null',
+          ),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    getBlockProductionOrderBaseHeaderController,
+  );
+
+  fastify.get<{ Params: BlockProductionOrderParams }>(
+    '/:id/production-orders/:orderId/base/processes',
+    {
+      schema: {
+        summary:
+          'List manufacturing processes from base API for a production order',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: blockProductionOrderParamsSchema,
+        response: {
+          200: blockProductionOrderBaseProcessesResponseSchema.describe(
+            'Processes from base API',
+          ),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    getBlockProductionOrderBaseProcessesController,
+  );
+
+  fastify.get<{ Params: BlockProductionOrderParams }>(
+    '/:id/production-orders/:orderId/base/part-preview',
+    {
+      schema: {
+        summary:
+          'Public URL of first part image from base API (by part number or code)',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: blockProductionOrderParamsSchema,
+        response: {
+          200: blockProductionOrderBasePartPreviewResponseSchema.describe(
+            'Image URL or null',
+          ),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    getBlockProductionOrderBasePartPreviewController,
+  );
+
   fastify.patch<{ Params: MachineMapPositionParams; Body: MachineMapPositionBody }>(
     '/:id/machines/:machineId/map-position',
     {
@@ -214,6 +310,118 @@ export function blockRoutes(fastify: FastifyInstance) {
       onRequest: [fastify.authenticate, fastify.csrfProtection],
     },
     clearMachineMapPositionController,
+  );
+
+  fastify.post<{ Params: BlockIdParams; Body: CreateBlockLineBody }>(
+    '/:id/lines',
+    {
+      schema: {
+        summary: 'Create a production line in the block',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: blockIdParamsSchema,
+        body: createBlockLineBodySchema,
+        response: {
+          201: blockDetailSchema,
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    createBlockLineController,
+  );
+
+  fastify.delete<{ Params: LineParams }>(
+    '/:id/lines/:lineId',
+    {
+      schema: {
+        summary: 'Delete a production line from the block',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: lineParamsSchema,
+        response: {
+          200: blockDetailSchema,
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    deleteBlockLineController,
+  );
+
+  fastify.patch<{ Params: LineParams; Body: UpdateLineMachinesBody }>(
+    '/:id/lines/:lineId/machines',
+    {
+      schema: {
+        summary: 'Assign machines to a line',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: lineParamsSchema,
+        body: updateLineMachinesBodySchema,
+        response: {
+          200: blockDetailSchema,
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    updateLineMachinesController,
+  );
+
+  fastify.patch<{ Params: LineParams; Body: UpdateLineLabelAnchorBody }>(
+    '/:id/lines/:lineId/label-anchor',
+    {
+      schema: {
+        summary: 'Set line name badge corner on the block plan',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: lineParamsSchema,
+        body: updateLineLabelAnchorBodySchema,
+        response: {
+          200: blockDetailSchema,
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    updateLineLabelAnchorController,
+  );
+
+  fastify.patch<{ Params: LineParams; Body: LineMapPositionBody }>(
+    '/:id/lines/:lineId/map-position',
+    {
+      schema: {
+        summary: 'Save line area on the block plan',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: lineParamsSchema,
+        body: lineMapPositionBodySchema,
+        response: {
+          200: lineMapPositionResponseSchema,
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    updateLineMapPositionController,
+  );
+
+  fastify.delete<{ Params: LineParams }>(
+    '/:id/lines/:lineId/map-position',
+    {
+      schema: {
+        summary: 'Remove line from the block plan map',
+        tags: ['Block'],
+        security: [{ cookieAuth: [] }],
+        params: lineParamsSchema,
+        response: {
+          200: lineMapPositionResponseSchema,
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    clearLineMapPositionController,
   );
 
   fastify.get<{ Params: BlockIdParams }>(

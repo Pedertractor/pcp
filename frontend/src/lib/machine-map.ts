@@ -1,4 +1,19 @@
-import type { BlockMachine } from '@/types/block';
+import type { BlockLine, BlockMachine, LineLabelAnchor } from '@/types/block';
+
+export type { LineLabelAnchor };
+export const DEFAULT_LINE_LABEL_ANCHOR: LineLabelAnchor = 'TOP_LEFT';
+export const DEFAULT_MACHINE_LABEL_ANCHOR: LineLabelAnchor = 'BOTTOM_LEFT';
+
+export const LINE_LABEL_ANCHOR_OPTIONS: {
+  value: LineLabelAnchor;
+  label: string;
+  short: string;
+}[] = [
+  { value: 'TOP_LEFT', label: 'Superior esquerdo', short: 'Sup. esq.' },
+  { value: 'TOP_RIGHT', label: 'Superior direito', short: 'Sup. dir.' },
+  { value: 'BOTTOM_LEFT', label: 'Inferior esquerdo', short: 'Inf. esq.' },
+  { value: 'BOTTOM_RIGHT', label: 'Inferior direito', short: 'Inf. dir.' },
+];
 
 export const DEFAULT_MACHINE_MAP_WIDTH = 10;
 export const DEFAULT_MACHINE_MAP_HEIGHT = 7;
@@ -7,6 +22,14 @@ export const MIN_MACHINE_MAP_WIDTH = 0.12;
 export const MIN_MACHINE_MAP_HEIGHT = 0.12;
 /** Arraste mínimo em pixels ao desenhar no mapa. */
 export const MIN_MACHINE_MAP_DRAG_PX = 3;
+
+/** Espaço reservado acima do retângulo (rótulo), alinhado ao editor de máquinas. */
+export const PLAN_MAP_LABEL_GUTTER = 7;
+
+export const LINE_MAP_STROKE = 'hsl(220 12% 48%)';
+export const LINE_MAP_FILL = 'hsla(220, 10%, 75%, 0.16)';
+export const LINE_MAP_STROKE_SELECTED = 'hsl(220 14% 28%)';
+export const LINE_MAP_FILL_SELECTED = 'hsla(220, 10%, 50%, 0.26)';
 /** Retângulo visível mínimo em pixels (só renderização). */
 export const MIN_MACHINE_MAP_RENDER_PX = 2;
 
@@ -16,6 +39,38 @@ export type MachineMapRect = {
   width: number;
   height: number;
 };
+
+type MapPositionFields = {
+  positionX: number | null;
+  positionY: number | null;
+  positionWidth: number | null;
+  positionHeight: number | null;
+};
+
+export function isEntityOnMap(entity: MapPositionFields): boolean {
+  return (
+    entity.positionX !== null &&
+    entity.positionY !== null &&
+    entity.positionWidth !== null &&
+    entity.positionHeight !== null
+  );
+}
+
+export function isLineOnMap(line: BlockLine): boolean {
+  return isEntityOnMap(line);
+}
+
+export function getLineMapRect(line: BlockLine): MachineMapRect | null {
+  if (line.positionX === null || line.positionY === null) {
+    return null;
+  }
+  return {
+    x: line.positionX,
+    y: line.positionY,
+    width: line.positionWidth ?? DEFAULT_MACHINE_MAP_WIDTH,
+    height: line.positionHeight ?? DEFAULT_MACHINE_MAP_HEIGHT,
+  };
+}
 
 export function isMachineOnMap(machine: BlockMachine): boolean {
   return (

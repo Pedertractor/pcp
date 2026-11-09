@@ -1,12 +1,15 @@
 import z from 'zod';
 
-const mapPercent = z.number().min(0).max(100);
+import { lineLabelAnchorSchema, mapPercent } from './map-common.schemas.js';
+
+export { mapPercent } from './map-common.schemas.js';
 
 export const machineMapPositionBodySchema = z.object({
   positionX: mapPercent,
   positionY: mapPercent,
   positionWidth: mapPercent,
   positionHeight: mapPercent,
+  labelAnchor: lineLabelAnchorSchema.optional(),
 });
 
 export type MachineMapPositionBody = z.infer<typeof machineMapPositionBodySchema>;
@@ -27,4 +30,5 @@ export const machineMapPositionResponseSchema = z.object({
   positionY: z.number().nullable(),
   positionWidth: z.number().nullable(),
   positionHeight: z.number().nullable(),
+  labelAnchor: lineLabelAnchorSchema,
 });

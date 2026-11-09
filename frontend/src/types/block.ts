@@ -42,14 +42,33 @@ export type BlockPlanImage = {
   updatedAt: string;
 };
 
+export type LineLabelAnchor =
+  | 'TOP_LEFT'
+  | 'TOP_RIGHT'
+  | 'BOTTOM_LEFT'
+  | 'BOTTOM_RIGHT';
+
+export type BlockLine = {
+  id: string;
+  code: string;
+  positionX: number | null;
+  positionY: number | null;
+  positionWidth: number | null;
+  positionHeight: number | null;
+  labelAnchor: LineLabelAnchor;
+  machineIds: string[];
+};
+
 export type BlockMachine = {
   id: string;
   code: string;
+  lineId: string | null;
   costCenter: string | null;
   positionX: number | null;
   positionY: number | null;
   positionWidth: number | null;
   positionHeight: number | null;
+  labelAnchor: LineLabelAnchor;
   expectedPiecesToday: number;
   expectedAreaToday: number;
   /** Peças apontadas em processos com fim no dia atual (consulta de processos). */
@@ -60,6 +79,7 @@ export type BlockMachine = {
 
 export type BlockDetail = BlockSummary & {
   blockPlanImage: BlockPlanImage | null;
+  lines: BlockLine[];
   machines: BlockMachine[];
   expectedPiecesToday: number;
   expectedAreaToday: number;
