@@ -100,7 +100,7 @@ export function PlanZoomViewport({ children, className }: PlanZoomViewportProps)
     [],
   );
 
-  const controls = useMemo<PlanZoomControls>(
+  const controls = useMemo<Omit<PlanZoomControls, 'scale'>>(
     () => ({
       focusRect: (rect) => {
         const viewport = viewportRef.current;

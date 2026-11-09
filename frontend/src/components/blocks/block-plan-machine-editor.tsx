@@ -286,11 +286,10 @@ function MachineSprayPaintDemo({
 
   const box = renderBoxPixels(rect, planWidth, planHeight);
   const shortSide = Math.min(box.width, box.height);
-  const pad = Math.max(3, shortSide * 0.05);
+  const pad = Math.max(2, shortSide * 0.04);
   const gunSize = Math.max(18, Math.min(40, shortSide * 0.38));
-  const labelCenterY = box.y - MACHINE_LABEL_GAP - MACHINE_LABEL_HEIGHT / 2;
-  const gunX = box.x + box.width - gunSize - pad;
-  const gunY = Math.max(0, labelCenterY - gunSize / 2);
+  const gunX = box.x;
+  const gunY = box.y - gunSize - pad;
   const nozzleX = gunX + gunSize * 0.78;
   const nozzleY = gunY + gunSize * 0.55;
   const t = animPhase * 0.12;

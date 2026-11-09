@@ -22,9 +22,12 @@ import {
   listBlockProductionOrders,
 } from '@/services/blocks/block.service';
 import {
-  PRODUCTION_ORDER_STATUS_LABELS,
-  type ProductionOrderStatus,
-} from '@/types/block';
+  normalizeStatusDate,
+  statusDateBadgeClass,
+  statusDateDotClass,
+  statusDateMatchesFilter,
+} from '@/lib/status-date-ui';
+import { cn } from '@/lib/utils';
 
 const ALL = 'all';
 
@@ -43,10 +46,6 @@ function formatSyncDateLabel(dateKey: string) {
   return `Sincronizado em ${formatDateKey(dateKey)}`;
 }
 
-function normalizeStatusDate(value: string | null): string {
-  return (value ?? '').replace(/^[.\s]+/, '').trim().toUpperCase();
-}
-
 function normalizedHexForSwatch(raw: string | null): string | null {
   if (raw === null) {
     return null;
@@ -61,7 +60,7 @@ function normalizedHexForSwatch(raw: string | null): string | null {
   return null;
 }
 
-const DEFAULT_STATUS_DATE_FILTER = ['HOJE', 'NO ATRASO'] as const;
+const DEFAULT_STATUS_DATE_FILTER = ['NO ATRASO', 'HOJE'] as const;
 
 function sameStringSet(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) {
@@ -87,9 +86,6 @@ export function BlockProductionOrdersPage() {
   const [filterStatusDate, setFilterStatusDate] = useState<StatusDateFilter>([
     ...DEFAULT_STATUS_DATE_FILTER,
   ]);
-  const [filterStatus, setFilterStatus] = useState<ProductionOrderStatus | typeof ALL>(
-    ALL,
-  );
   const [filterSyncDate, setFilterSyncDate] = useState(ALL);
   const [animateSpin, setAnimateSpin] = useState(false);
 
@@ -147,14 +143,11 @@ export function BlockProductionOrdersPage() {
       if (filterCostCenter !== ALL && order.costCenter !== filterCostCenter) {
         return false;
       }
-      if (filterStatus !== ALL && order.status !== filterStatus) {
+      if (
+        filterStatusDate !== ALL &&
+        !statusDateMatchesFilter(order.statusDate, filterStatusDate)
+      ) {
         return false;
-      }
-      if (filterStatusDate !== ALL) {
-        const norm = normalizeStatusDate(order.statusDate);
-        if (!filterStatusDate.includes(norm)) {
-          return false;
-        }
       }
       if (ofQ && !order.ofNumber.toLocaleLowerCase('pt-BR').includes(ofQ)) {
         return false;
@@ -191,7 +184,6 @@ export function BlockProductionOrdersPage() {
     filterOperation,
     filterCostCenter,
     filterStatusDate,
-    filterStatus,
     filterSyncDate,
   ]);
 
@@ -203,7 +195,6 @@ export function BlockProductionOrdersPage() {
     filterOperation.trim(),
     filterCostCenter !== ALL,
     filterStatusDate === ALL || !isDefaultStatusDateFilter(filterStatusDate),
-    filterStatus !== ALL,
     filterSyncDate !== ALL,
   ].filter(Boolean).length;
 
@@ -221,7 +212,6 @@ export function BlockProductionOrdersPage() {
     setFilterOperation('');
     setFilterCostCenter(ALL);
     setFilterStatusDate([...DEFAULT_STATUS_DATE_FILTER]);
-    setFilterStatus(ALL);
     setFilterSyncDate(ALL);
     window.setTimeout(() => setAnimateSpin(false), 400);
   }, []);
@@ -325,7 +315,6 @@ export function BlockProductionOrdersPage() {
           filterOperation={filterOperation}
           filterCostCenter={filterCostCenter}
           filterStatusDate={filterStatusDate}
-          filterStatus={filterStatus}
           filterSyncDate={filterSyncDate}
           costCenterOptions={costCenters}
           syncDateOptions={syncDates}
@@ -340,7 +329,6 @@ export function BlockProductionOrdersPage() {
           onFilterCostCenterChange={setFilterCostCenter}
           onFilterStatusDateSelectAll={selectAllStatusDates}
           onFilterStatusDateToggle={toggleStatusDate}
-          onFilterStatusChange={setFilterStatus}
           onFilterSyncDateChange={setFilterSyncDate}
           onReset={resetFilters}
           statusDateValueOptions={statusDateValues}
@@ -378,14 +366,13 @@ export function BlockProductionOrdersPage() {
                 <TableHead className="text-right">m²/pç</TableHead>
                 <TableHead className="text-right">m² total</TableHead>
                 <TableHead>Status da data</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead>Sincronização</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-muted-foreground">
+                  <TableCell colSpan={11} className="text-muted-foreground">
                     Nenhuma OF encontrada.
                   </TableCell>
                 </TableRow>
@@ -447,11 +434,32 @@ export function BlockProductionOrdersPage() {
                     <TableCell className="text-right font-medium tabular-nums">
                       {areaFormatter.format(order.totalArea)}
                     </TableCell>
-                    <TableCell>{order.statusDate ?? '—'}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">
-                        {PRODUCTION_ORDER_STATUS_LABELS[order.status]}
-                      </Badge>
+                      {order.statusDate ? (
+                        (() => {
+                          const norm = normalizeStatusDate(order.statusDate);
+                          return (
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'gap-1.5 font-normal',
+                                statusDateBadgeClass(norm),
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'size-2 shrink-0 rounded-full',
+                                  statusDateDotClass(norm),
+                                )}
+                                aria-hidden
+                              />
+                              {order.statusDate.trim()}
+                            </Badge>
+                          );
+                        })()
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {formatDateKey(order.syncDate)}

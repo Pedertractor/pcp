@@ -4,6 +4,7 @@ export type { LineLabelAnchor };
 export const DEFAULT_LINE_LABEL_ANCHOR: LineLabelAnchor = 'TOP_LEFT';
 export const DEFAULT_MACHINE_LABEL_ANCHOR: LineLabelAnchor = 'BOTTOM_LEFT';
 
+/** Cantos do retângulo no mapa; o ícone com seta fica no picker (`LineLabelAnchorPicker`). */
 export const LINE_LABEL_ANCHOR_OPTIONS: {
   value: LineLabelAnchor;
   label: string;

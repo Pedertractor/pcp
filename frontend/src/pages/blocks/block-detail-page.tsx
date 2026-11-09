@@ -22,10 +22,18 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { BlockLinkPaintColorsButton } from '@/components/blocks/block-link-paint-colors-dialog';
+import logoSystem from '@/public/logo-system.png';
 import { BlockCostCentersDialog } from '@/components/blocks/block-cost-centers-dialog';
 import { BlockCreateLineDialog } from '@/components/blocks/block-create-line-dialog';
 import { LineLabelAnchorPicker } from '@/components/blocks/line-label-anchor-picker';
@@ -62,6 +70,93 @@ import { BLOCK_SECTOR_LABELS, type BlockDetail } from '@/types/block';
 import { cn } from '@/lib/utils';
 
 const BLOCKS_PATH = '/controle-produtivo';
+
+const BLOCK_CUT = 80;
+const BLOCK_BEND = 24;
+const BLOCK_OUTER = 16;
+
+function blockPanelPath(
+  width: number,
+  height: number,
+  cut: number,
+  bend: number,
+  outer: number,
+) {
+  const inset = 0.5;
+  const x0 = inset;
+  const y0 = inset;
+  const x1 = width - inset;
+  const y1 = height - inset;
+  const o = Math.min(outer, (x1 - x0) / 4, (y1 - y0 - cut) / 2);
+  const b = Math.min(bend, cut / 2 - 1, (y1 - y0 - cut) / 2);
+  const c = cut;
+
+  return [
+    `M ${x0 + o} ${y0}`,
+    `H ${x1 - o}`,
+    `A ${o} ${o} 0 0 1 ${x1} ${y0 + o}`,
+    `V ${y1 - o}`,
+    `A ${o} ${o} 0 0 1 ${x1 - o} ${y1}`,
+    `H ${c + b}`,
+    `A ${b} ${b} 0 0 1 ${c} ${y1 - b}`,
+    `V ${y1 - c + b}`,
+    `A ${b} ${b} 0 0 1 ${c - b} ${y1 - c}`,
+    `H ${x0 + b}`,
+    `A ${b} ${b} 0 0 1 ${x0} ${y1 - c - b}`,
+    `V ${y0 + o}`,
+    `A ${o} ${o} 0 0 1 ${x0 + o} ${y0}`,
+    'Z',
+  ].join(' ');
+}
+
+function BlockPanelShape() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) {
+      return;
+    }
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setSize({ width, height });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const d =
+    size.width > 0 && size.height > 0
+      ? blockPanelPath(
+          size.width,
+          size.height,
+          BLOCK_CUT,
+          BLOCK_BEND,
+          BLOCK_OUTER,
+        )
+      : '';
+
+  return (
+    <div ref={ref} className="pointer-events-none absolute inset-0">
+      {d ? (
+        <svg
+          className="h-full w-full"
+          width={size.width}
+          height={size.height}
+          aria-hidden
+        >
+          <path
+            d={d}
+            className="fill-card"
+            stroke="color-mix(in oklab, var(--border) 60%, transparent)"
+            strokeWidth={1}
+          />
+        </svg>
+      ) : null}
+    </div>
+  );
+}
 
 /** Entrada suave ao abrir o bloco (respeita prefers-reduced-motion via motion-safe). */
 const blockCardEnter = cn(
@@ -105,11 +200,13 @@ function BlockInfoItem({
   if (compact) {
     return (
       <div className="min-w-0 text-center">
-        <dt className="flex items-center justify-center gap-1 text-[10px] leading-none text-muted-foreground">
+        <dt className="flex items-center justify-center gap-1 text-[10px] font-medium leading-tight text-muted-foreground sm:text-xs">
           <Icon className="size-3 shrink-0 text-brand" aria-hidden />
           {label}
         </dt>
-        <dd className="mt-1 truncate text-xs font-semibold tabular-nums">{value}</dd>
+        <dd className="mt-1 truncate text-xs font-semibold tabular-nums sm:text-sm">
+          {value}
+        </dd>
       </div>
     );
   }
@@ -648,10 +745,18 @@ export function BlockDetailPage() {
     <div className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-background p-3 sm:gap-4 sm:p-4 lg:grid lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)_minmax(17rem,calc(100vw/4.8))] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
       <aside
         className={cn(
-          'flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl border border-border/60 bg-card p-4 sm:p-5 lg:h-full',
+          'relative flex min-h-0 min-w-0 shrink-0 flex-col lg:h-full',
           blockPanelFromLeft,
         )}
       >
+        <BlockPanelShape />
+        <img
+          src={logoSystem}
+          alt="PCP"
+          className="pointer-events-none absolute bottom-0 left-0 z-0 object-contain p-3.5 dark:brightness-0 dark:invert"
+          style={{ width: BLOCK_CUT, height: BLOCK_CUT }}
+        />
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col p-4 sm:p-5">
         <header className="flex items-start gap-3 border-b border-border/60 pb-4">
           <Button
             type="button"
@@ -674,7 +779,7 @@ export function BlockDetailPage() {
         </header>
 
         <div className="shrink-0 space-y-2 border-b border-border/60 py-3">
-          <dl className="grid grid-cols-4 gap-1">
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-2.5 sm:gap-x-3">
             <BlockInfoItem
               compact
               icon={Paintbrush}
@@ -819,12 +924,16 @@ export function BlockDetailPage() {
             )}
           </ul>
         </section>
+        </div>
 
-        {block.sector === 'PAINT' ? (
-          <div className="mt-4 shrink-0 border-t border-border/60 pt-4">
+        <div
+          className="relative z-10 flex min-w-0 shrink-0 items-center px-4 py-2.5 sm:px-5 sm:py-3 [&_button]:h-full [&_button]:min-h-0 [&_button]:py-0"
+          style={{ marginLeft: BLOCK_CUT, height: BLOCK_CUT }}
+        >
+          {block.sector === 'PAINT' ? (
             <BlockLinkPaintColorsButton block={block} prominent />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </aside>
 
       <main

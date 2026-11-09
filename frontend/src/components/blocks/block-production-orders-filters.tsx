@@ -12,7 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PRODUCTION_ORDER_STATUS_LABELS, type ProductionOrderStatus } from '@/types/block';
+import {
+  STATUS_DATE_FILTER_ORDER,
+  statusDateDotClass,
+} from '@/lib/status-date-ui';
 import { cn } from '@/lib/utils';
 
 const ALL = 'all';
@@ -28,7 +31,6 @@ type BlockProductionOrdersFiltersProps = {
   filterOperation: string;
   filterCostCenter: string;
   filterStatusDate: StatusDateFilter;
-  filterStatus: ProductionOrderStatus | typeof ALL;
   filterSyncDate: string;
   costCenterOptions: string[];
   syncDateOptions: string[];
@@ -43,26 +45,11 @@ type BlockProductionOrdersFiltersProps = {
   onFilterCostCenterChange: (value: string) => void;
   onFilterStatusDateSelectAll: () => void;
   onFilterStatusDateToggle: (normalizedLabel: string) => void;
-  onFilterStatusChange: (value: ProductionOrderStatus | typeof ALL) => void;
   onFilterSyncDateChange: (value: string) => void;
   onReset: () => void;
   /** Valores normalizados de STATUS_DATA ja vistos nas OFs (para filtrar outros rotulos). */
   statusDateValueOptions: string[];
 };
-
-const STATUS_DATE_OPTIONS_STATIC: { norm: string; label: string }[] = [
-  { norm: ALL, label: 'Todos' },
-  { norm: 'HOJE', label: 'HOJE' },
-  { norm: 'NO ATRASO', label: 'NO ATRASO' },
-];
-
-const INTERNAL_STATUS_OPTIONS: (ProductionOrderStatus | typeof ALL)[] = [
-  ALL,
-  'PENDING',
-  'IN_PROGRESS',
-  'COMPLETED',
-  'OVERDUE',
-];
 
 export function BlockProductionOrdersFilters({
   filterOf,
@@ -72,7 +59,6 @@ export function BlockProductionOrdersFilters({
   filterOperation,
   filterCostCenter,
   filterStatusDate,
-  filterStatus,
   filterSyncDate,
   costCenterOptions,
   syncDateOptions,
@@ -87,20 +73,18 @@ export function BlockProductionOrdersFilters({
   onFilterCostCenterChange,
   onFilterStatusDateSelectAll,
   onFilterStatusDateToggle,
-  onFilterStatusChange,
   onFilterSyncDateChange,
   onReset,
   statusDateValueOptions,
 }: BlockProductionOrdersFiltersProps) {
   const statusDateFilterButtons = useMemo(() => {
-    const staticNorms = new Set(
-      STATUS_DATE_OPTIONS_STATIC.filter((o) => o.norm !== ALL).map((o) => o.norm),
-    );
+    const known = new Set(STATUS_DATE_FILTER_ORDER);
     const extra = statusDateValueOptions
-      .filter((norm) => norm.length > 0 && !staticNorms.has(norm))
+      .filter((norm) => norm.length > 0 && !known.has(norm))
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
     return [
-      ...STATUS_DATE_OPTIONS_STATIC,
+      { norm: ALL, label: 'Todos' },
+      ...STATUS_DATE_FILTER_ORDER.map((norm) => ({ norm, label: norm })),
       ...extra.map((norm) => ({ norm, label: norm })),
     ];
   }, [statusDateValueOptions]);
@@ -219,38 +203,25 @@ export function BlockProductionOrdersFilters({
               variant="outline"
               onClick={() => onStatusDateButtonClick(norm)}
               className={cn(
-                'min-h-9 flex-1 px-2 text-xs sm:flex-none sm:px-3',
+                'min-h-9 flex-1 gap-1.5 px-2 text-xs sm:flex-none sm:px-3',
                 isStatusDateButtonSelected(norm)
-                  ? 'bg-brand-muted text-foreground'
-                  : 'bg-muted text-muted-foreground',
+                  ? 'border-brand-soft bg-brand-muted text-foreground hover:bg-brand-muted dark:border-brand-soft/70 dark:bg-input/70 dark:text-foreground dark:hover:bg-input/70'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted/40 dark:border-input dark:bg-input/15 dark:text-muted-foreground dark:hover:bg-input/30',
               )}
             >
+              {norm !== ALL ? (
+                <span
+                  className={cn(
+                    'size-2 shrink-0 rounded-full',
+                    statusDateDotClass(norm),
+                  )}
+                  aria-hidden
+                />
+              ) : null}
               {label}
             </Button>
           ))}
         </div>
-      </div>
-
-      <div className="flex min-w-[120px] flex-col">
-        <Label className="text-sm font-medium">Status</Label>
-        <Select
-          value={filterStatus}
-          onValueChange={(value) =>
-            onFilterStatusChange(value as ProductionOrderStatus | typeof ALL)
-          }
-        >
-          <SelectTrigger aria-label="Status interno" className="w-full min-w-[10rem]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent position="popper">
-            <SelectItem value={ALL}>Todos</SelectItem>
-            {INTERNAL_STATUS_OPTIONS.filter((v) => v !== ALL).map((status) => (
-              <SelectItem key={status} value={status}>
-                {PRODUCTION_ORDER_STATUS_LABELS[status]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="flex min-w-[180px] flex-1 flex-col sm:max-w-[220px]">

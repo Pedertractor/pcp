@@ -96,7 +96,7 @@ export function HomePage() {
             sideOpacity(hovered, 'control'),
           )}
         >
-          <div className="h-10 text-sm text-neutral-500">
+          <div className="h-10 text-sm text-black">
             {firstName ? `Olá, ${firstName}` : 'Olá'}
             {user ? (
               <span className="block text-xs">
