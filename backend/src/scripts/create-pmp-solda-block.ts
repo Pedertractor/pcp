@@ -80,7 +80,7 @@ async function main() {
 
   const block = existing
     ? await service.updateBlock(existing.id, { name: BLOCK_NAME, costCenters })
-    : await service.createBlock({ name: BLOCK_NAME, costCenters });
+    : await service.createBlock({ name: BLOCK_NAME, costCenters, series: [] });
 
   const operationsCount = block.costCenters.reduce(
     (total, cc) => total + cc.operations.length,

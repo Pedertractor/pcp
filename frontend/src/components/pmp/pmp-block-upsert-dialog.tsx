@@ -1,10 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Boxes, ImageUp, Loader2Icon, Plus, Receipt } from 'lucide-react';
+import { Boxes, ImageUp, Layers, Loader2Icon, Plus, Receipt } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { SectorPicker } from '@/components/blocks/sector-picker';
 import { PmpCostCenterOperationsEditor } from '@/components/pmp/pmp-cost-center-operations-editor';
+import {
+  PmpSeriesEditor,
+  toSeriesDrafts,
+  toSeriesInput,
+  type PmpSeriesDraft,
+} from '@/components/pmp/pmp-series-editor';
 import { PmpThemeImageDropzone } from '@/components/pmp/pmp-theme-image-dropzone';
 import { Button } from '@/components/ui/button';
 import {
@@ -77,6 +83,9 @@ export function PmpBlockUpsertDialog({
   const [operationsBySector, setOperationsBySector] = useState<
     Record<string, number[]>
   >(() => (block ? buildOperationsMap(block) : {}));
+  const [seriesDrafts, setSeriesDrafts] = useState<PmpSeriesDraft[]>(() =>
+    toSeriesDrafts(block?.series ?? []),
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const [themeFile, setThemeFile] = useState<File | null>(null);
 
@@ -90,10 +99,12 @@ export function PmpBlockUpsertDialog({
       setName(block.name);
       setSectorIds(block.costCenters.map((cc) => cc.sectorIdApi));
       setOperationsBySector(buildOperationsMap(block));
+      setSeriesDrafts(toSeriesDrafts(block.series));
     } else {
       setName('');
       setSectorIds([]);
       setOperationsBySector({});
+      setSeriesDrafts([]);
       setThemeFile(null);
     }
     setFormError(null);
@@ -164,14 +175,16 @@ export function PmpBlockUpsertDialog({
         sectorIdApi,
         operations: operationsBySector[sectorIdApi] ?? [],
       }));
+      const series = toSeriesInput(seriesDrafts);
       let saved;
       if (isEdit && block) {
         saved = await updatePmpBlock(block.id, {
           name: values.name,
           costCenters,
+          series,
         });
       } else {
-        saved = await createPmpBlock({ name: values.name, costCenters });
+        saved = await createPmpBlock({ name: values.name, costCenters, series });
       }
       if (themeFile) {
         try {
@@ -204,6 +217,15 @@ export function PmpBlockUpsertDialog({
     const parsed = createPmpBlockFormSchema.safeParse({ name, sectorIds });
     if (!parsed.success) {
       setFormError(parsed.error.issues[0]?.message ?? 'Dados inválidos');
+      return;
+    }
+    const seriesNames = seriesDrafts.map((item) => item.name.trim().toLocaleUpperCase('pt-BR'));
+    if (seriesNames.some((item) => !item)) {
+      setFormError('Informe o nome de todas as séries.');
+      return;
+    }
+    if (new Set(seriesNames).size !== seriesNames.length) {
+      setFormError('Há séries com o mesmo nome.');
       return;
     }
     setFormError(null);
@@ -304,6 +326,17 @@ export function PmpBlockUpsertDialog({
               ))}
             </div>
           ) : null}
+
+          <div className="grid gap-3">
+            <Label className="flex items-center gap-2">
+              <Layers className="size-4 text-muted-foreground" />
+              Séries de peças
+            </Label>
+            <p className="-mt-1 text-xs text-muted-foreground">
+              O bloco só aceita metas de peças cujo código está em alguma série.
+            </p>
+            <PmpSeriesEditor value={seriesDrafts} onChange={setSeriesDrafts} />
+          </div>
 
           {formError ? (
             <p className="text-sm text-destructive">{formError}</p>

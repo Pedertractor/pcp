@@ -28,11 +28,18 @@ export type PmpCostCenter = {
   operations: PmpCostCenterOperation[];
 };
 
+export type PmpSeries = {
+  id: string;
+  name: string;
+  partCodes: string[];
+};
+
 export type PmpBlockSummary = {
   id: string;
   name: string;
   themeImage: PmpBlockThemeImage | null;
   costCenters: PmpCostCenter[];
+  series: PmpSeries[];
   createdAt: string;
   updatedAt: string;
 };
@@ -42,12 +49,19 @@ export type PmpCostCenterInput = {
   operations: number[];
 };
 
+export type PmpSeriesInput = {
+  name: string;
+  partCodes: string[];
+};
+
 export type CreatePmpBlockInput = {
   name: string;
   costCenters: PmpCostCenterInput[];
+  series: PmpSeriesInput[];
 };
 
 export type UpdatePmpBlockInput = {
   name?: string;
   costCenters: PmpCostCenterInput[];
+  series?: PmpSeriesInput[];
 };

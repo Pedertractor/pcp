@@ -10,6 +10,7 @@ import {
 import type {
   CreatePmpBlockBody,
   PmpBlockSummary,
+  PmpSeriesInput,
   UpdatePmpBlockBody,
 } from '../schemas/pmp-block.schemas.js';
 import { SectorService } from './sector.service.js';
@@ -22,6 +23,12 @@ const pmpBlockInclude = {
     orderBy: { costCenter: 'asc' as const },
     include: {
       operations: { orderBy: { operation: 'asc' as const } },
+    },
+  },
+  series: {
+    orderBy: { name: 'asc' as const },
+    include: {
+      parts: { orderBy: { partCode: 'asc' as const } },
     },
   },
 } as const;
@@ -47,10 +54,36 @@ type PmpBlockWithRelations = {
     sectorIdApi: string;
     operations: Array<{ id: string; operation: number }>;
   }>;
+  series: Array<{
+    id: string;
+    name: string;
+    parts: Array<{ partCode: string }>;
+  }>;
 };
 
 function dedupeOperations(operations: number[]): number[] {
   return [...new Set(operations)].sort((a, b) => a - b);
+}
+
+/** Códigos de peça são gravados sem zeros à esquerda, como no import das metas semanais. */
+function normalizeSeries(inputs: PmpSeriesInput[]) {
+  const names = new Set<string>();
+  return inputs.map((item) => {
+    const name = item.name.trim();
+    const key = name.toLocaleUpperCase('pt-BR');
+    if (names.has(key)) {
+      throw new AppError(`Série "${name}" repetida na lista.`, 400);
+    }
+    names.add(key);
+    const partCodes = [
+      ...new Set(
+        item.partCodes
+          .map((code) => code.trim().replace(/^0+/, ''))
+          .filter(Boolean),
+      ),
+    ].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+    return { name, partCodes };
+  });
 }
 
 function toPmpBlockSummary(block: PmpBlockWithRelations): PmpBlockSummary {
@@ -77,6 +110,13 @@ function toPmpBlockSummary(block: PmpBlockWithRelations): PmpBlockSummary {
         id: op.id,
         operation: op.operation,
       })),
+    })),
+    series: block.series.map((series) => ({
+      id: series.id,
+      name: series.name,
+      partCodes: series.parts
+        .map((part) => part.partCode)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
     })),
     createdAt: block.createdAt.toISOString(),
     updatedAt: block.updatedAt.toISOString(),
@@ -116,6 +156,7 @@ export class PmpBlockService {
     }
 
     const costCenters = await this.resolveCostCenters(input.costCenters);
+    const series = normalizeSeries(input.series);
 
     const block = await this.prisma.pmpBlock.create({
       data: {
@@ -127,6 +168,14 @@ export class PmpBlockService {
             sectorIdApi: item.sectorIdApi,
             operations: {
               create: item.operations.map((operation) => ({ operation })),
+            },
+          })),
+        },
+        series: {
+          create: series.map((item) => ({
+            name: item.name,
+            parts: {
+              create: item.partCodes.map((partCode) => ({ partCode })),
             },
           })),
         },
@@ -167,6 +216,7 @@ export class PmpBlockService {
       input.costCenters,
       blockId,
     );
+    const series = input.series ? normalizeSeries(input.series) : null;
 
     const nextBySectorId = new Map(
       resolved.map((item) => [item.sectorIdApi, item]),
@@ -255,6 +305,32 @@ export class PmpBlockService {
             sectorName: item.sectorName,
           },
         });
+      }
+
+      if (series) {
+        await tx.pmpSeries.deleteMany({
+          where: {
+            pmpBlockId: blockId,
+            name: { notIn: series.map((item) => item.name) },
+          },
+        });
+        for (const item of series) {
+          const saved = await tx.pmpSeries.upsert({
+            where: { pmpBlockId_name: { pmpBlockId: blockId, name: item.name } },
+            create: { pmpBlockId: blockId, name: item.name },
+            update: {},
+            select: { id: true },
+          });
+          await tx.pmpSeriesPart.deleteMany({ where: { pmpSeriesId: saved.id } });
+          if (item.partCodes.length > 0) {
+            await tx.pmpSeriesPart.createMany({
+              data: item.partCodes.map((partCode) => ({
+                pmpSeriesId: saved.id,
+                partCode,
+              })),
+            });
+          }
+        }
       }
 
       await tx.pmpBlock.update({

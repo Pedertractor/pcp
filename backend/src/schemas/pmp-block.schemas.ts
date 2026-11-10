@@ -23,11 +23,18 @@ export const pmpCostCenterSchema = z.object({
   operations: z.array(pmpCostCenterOperationSchema),
 });
 
+export const pmpSeriesSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  partCodes: z.array(z.string()),
+});
+
 export const pmpBlockSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
   themeImage: pmpBlockThemeImageSchema.nullable(),
   costCenters: z.array(pmpCostCenterSchema),
+  series: z.array(pmpSeriesSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -49,11 +56,19 @@ const pmpCostCenterInputSchema = z.object({
     .default([]),
 });
 
+const pmpSeriesInputSchema = z.object({
+  name: z.string().trim().min(1, 'Informe o nome da série').max(60),
+  partCodes: z.array(z.string().trim().min(1)).default([]),
+});
+
+export type PmpSeriesInput = z.infer<typeof pmpSeriesInputSchema>;
+
 export const createPmpBlockBodySchema = z.object({
   name: z.string().trim().min(1, 'Informe o nome do bloco').max(120),
   costCenters: z
     .array(pmpCostCenterInputSchema)
     .min(1, 'Selecione ao menos um centro de custo'),
+  series: z.array(pmpSeriesInputSchema).default([]),
 });
 
 export type CreatePmpBlockBody = z.infer<typeof createPmpBlockBodySchema>;
@@ -61,6 +76,7 @@ export type CreatePmpBlockBody = z.infer<typeof createPmpBlockBodySchema>;
 export const updatePmpBlockBodySchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   costCenters: z.array(pmpCostCenterInputSchema).min(1),
+  series: z.array(pmpSeriesInputSchema).optional(),
 });
 
 export type UpdatePmpBlockBody = z.infer<typeof updatePmpBlockBodySchema>;
