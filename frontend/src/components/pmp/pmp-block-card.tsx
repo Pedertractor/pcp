@@ -45,7 +45,7 @@ export function PmpBlockCard({ block, className }: PmpBlockCardProps) {
             <img
               src={themeImage.src}
               alt=""
-              className="size-full object-contain transition-transform duration-300 group-hover:scale-105"
+              className="size-3/4 object-contain transition-transform duration-300 group-hover:scale-105"
               draggable={false}
             />
           ) : themeImage.isLoading && block.themeImage ? (
