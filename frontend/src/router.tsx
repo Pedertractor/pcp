@@ -10,6 +10,9 @@ import { BlockDetailPage } from '@/pages/blocks/block-detail-page';
 import { BlockProductionOrdersPage } from '@/pages/blocks/block-production-orders-page';
 import { BlockProductionOrderProcessesPage } from '@/pages/blocks/block-production-order-processes-page';
 import { BlocksPage } from '@/pages/blocks/blocks-page';
+import { PmpBlockWeeksPage } from '@/pages/pmp/pmp-block-weeks-page';
+import { PmpBlocksPage } from '@/pages/pmp/pmp-blocks-page';
+import { PmpWeeklyGoalDaysPage } from '@/pages/pmp/pmp-weekly-goal-days-page';
 import { HomePage } from '@/pages/home-page';
 import { UsuariosPage } from '@/pages/usuarios-page';
 
@@ -32,9 +35,15 @@ export function AppRouter() {
             path="/controle-produtivo/:blockId/ofs/:orderId/processes"
             element={<BlockProductionOrderProcessesPage />}
           />
+          <Route path="/pmp/:blockId" element={<PmpBlockWeeksPage />} />
+          <Route
+            path="/pmp/:blockId/metas/:goalId"
+            element={<PmpWeeklyGoalDaysPage />}
+          />
           <Route element={<AppShell />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/controle-produtivo" element={<BlocksPage />} />
+            <Route path="/pmp" element={<PmpBlocksPage />} />
             <Route element={<RequireUserManagement />}>
               <Route path="/usuarios" element={<UsuariosPage />} />
             </Route>

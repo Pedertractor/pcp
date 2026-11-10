@@ -12,6 +12,12 @@ export const sectorOptionSchema = z.object({
       name: z.string(),
     })
     .nullable(),
+  linkedPmpBlock: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+    })
+    .nullable(),
 });
 
 export type SectorOption = z.infer<typeof sectorOptionSchema>;

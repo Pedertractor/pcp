@@ -13,6 +13,8 @@ type SectorPickerProps = {
   loading: boolean;
   error: string | null;
   currentBlockId?: string;
+  /** Qual vínculo impede seleção em outro bloco (Controle Produtivo ou PMP). */
+  linkedField?: 'linkedBlock' | 'linkedPmpBlock';
   className?: string;
   listClassName?: string;
   onToggle: (id: string) => void;
@@ -33,6 +35,7 @@ export function SectorPicker({
   loading,
   error,
   currentBlockId,
+  linkedField = 'linkedBlock',
   className,
   listClassName,
   onToggle,
@@ -115,9 +118,9 @@ export function SectorPicker({
           >
             {filteredSectors.map((item) => {
               const selected = selectedIds.includes(item.id);
+              const linked = item[linkedField];
               const linkedElsewhere =
-                item.linkedBlock !== null &&
-                item.linkedBlock.id !== currentBlockId;
+                linked !== null && linked.id !== currentBlockId;
 
               return (
                 <li key={item.id}>
@@ -149,7 +152,7 @@ export function SectorPicker({
                     <span className="min-w-0 flex-1 truncate">{item.name}</span>
                     {linkedElsewhere ? (
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {item.linkedBlock?.name}
+                        {linked?.name}
                       </span>
                     ) : null}
                   </button>

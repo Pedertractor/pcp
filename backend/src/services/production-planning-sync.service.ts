@@ -7,7 +7,7 @@ import {
 import { startOfLocalDay } from '../lib/excel-serial-date.js';
 import { AppError } from '../lib/errors.js';
 import {
-  hasStatusDateValue,
+  isPlanningStatusHojeOuNoAtraso,
   normalizeStatusDate,
 } from '../lib/status-date.js';
 import type { PlanningRow, PlanningSyncResult } from '../types/planning.types.js';
@@ -133,7 +133,7 @@ export class ProductionPlanningSyncService {
       costCenterMatches(row.costCenter, costCenters),
     );
     const syncedRows = inCostCenters.filter((row) =>
-      hasStatusDateValue(row.statusDate),
+      isPlanningStatusHojeOuNoAtraso(row.statusDate),
     );
 
     let machinesCreated = 0;

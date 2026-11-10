@@ -81,6 +81,7 @@ export function BlockCostCentersDialog({
               normalizedName: '',
               operationId: null,
               linkedBlock: { id: block.id, name: block.name },
+              linkedPmpBlock: null,
             }
           : undefined;
       })

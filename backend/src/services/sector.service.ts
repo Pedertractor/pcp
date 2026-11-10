@@ -12,7 +12,7 @@ export class SectorService {
   }
 
   async listSectorOptions(): Promise<SectorOption[]> {
-    const [sectors, linked] = await Promise.all([
+    const [sectors, linked, linkedPmp] = await Promise.all([
       this.listActiveSectors(),
       this.prisma.costCenter.findMany({
         select: {
@@ -20,10 +20,19 @@ export class SectorService {
           block: { select: { id: true, name: true } },
         },
       }),
+      this.prisma.pmpCostCenter.findMany({
+        select: {
+          sectorIdApi: true,
+          pmpBlock: { select: { id: true, name: true } },
+        },
+      }),
     ]);
 
     const linkedBySector = new Map(
       linked.map((item) => [item.sectorIdBaseApi, item.block]),
+    );
+    const linkedPmpBySector = new Map(
+      linkedPmp.map((item) => [item.sectorIdApi, item.pmpBlock]),
     );
 
     return sectors
@@ -34,6 +43,7 @@ export class SectorService {
         normalizedName: sector.normalizedName,
         operationId: sector.operationId,
         linkedBlock: linkedBySector.get(sector.id) ?? null,
+        linkedPmpBlock: linkedPmpBySector.get(sector.id) ?? null,
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }

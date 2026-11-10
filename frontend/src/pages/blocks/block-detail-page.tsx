@@ -28,7 +28,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -39,12 +38,17 @@ import { BlockCostCentersDialog } from '@/components/blocks/block-cost-centers-d
 import { BlockCreateLineDialog } from '@/components/blocks/block-create-line-dialog';
 import { LineLabelAnchorPicker } from '@/components/blocks/line-label-anchor-picker';
 import { BlockLinesDialog } from '@/components/blocks/block-lines-dialog';
+import {
+  ProducedPlannedProgressBar,
+  productionProgressPercent,
+} from '@/components/blocks/produced-planned-progress';
 import { BlockMapSettingsDialog } from '@/components/blocks/block-map-settings-dialog';
 import {
   BlockPlanMachineEditor,
   type MachineMapToolbarActions,
 } from '@/components/blocks/block-plan-machine-editor';
 import { PlanZoomViewport } from '@/components/blocks/plan-zoom-viewport';
+import { NOTCH_CUT, NotchedPanelShape } from '@/components/notched-panel-shape';
 import { isLineOnMap, isMachineOnMap } from '@/lib/machine-map';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -72,90 +76,11 @@ import { cn } from '@/lib/utils';
 
 const BLOCKS_PATH = '/controle-produtivo';
 
-const BLOCK_CUT = 80;
-const BLOCK_BEND = 24;
-const BLOCK_OUTER = 16;
-
-function blockPanelPath(
-  width: number,
-  height: number,
-  cut: number,
-  bend: number,
-  outer: number,
-) {
-  const inset = 0.5;
-  const x0 = inset;
-  const y0 = inset;
-  const x1 = width - inset;
-  const y1 = height - inset;
-  const o = Math.min(outer, (x1 - x0) / 4, (y1 - y0 - cut) / 2);
-  const b = Math.min(bend, cut / 2 - 1, (y1 - y0 - cut) / 2);
-  const c = cut;
-
-  return [
-    `M ${x0 + o} ${y0}`,
-    `H ${x1 - o}`,
-    `A ${o} ${o} 0 0 1 ${x1} ${y0 + o}`,
-    `V ${y1 - o}`,
-    `A ${o} ${o} 0 0 1 ${x1 - o} ${y1}`,
-    `H ${c + b}`,
-    `A ${b} ${b} 0 0 1 ${c} ${y1 - b}`,
-    `V ${y1 - c + b}`,
-    `A ${b} ${b} 0 0 1 ${c - b} ${y1 - c}`,
-    `H ${x0 + b}`,
-    `A ${b} ${b} 0 0 1 ${x0} ${y1 - c - b}`,
-    `V ${y0 + o}`,
-    `A ${o} ${o} 0 0 1 ${x0 + o} ${y0}`,
-    'Z',
-  ].join(' ');
-}
+const BLOCK_CUT = NOTCH_CUT;
 
 function BlockPanelShape() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) {
-      return;
-    }
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setSize({ width, height });
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
-  const d =
-    size.width > 0 && size.height > 0
-      ? blockPanelPath(
-          size.width,
-          size.height,
-          BLOCK_CUT,
-          BLOCK_BEND,
-          BLOCK_OUTER,
-        )
-      : '';
-
   return (
-    <div ref={ref} className="pointer-events-none absolute inset-0">
-      {d ? (
-        <svg
-          className="h-full w-full"
-          width={size.width}
-          height={size.height}
-          aria-hidden
-        >
-          <path
-            d={d}
-            className="fill-card"
-            stroke="color-mix(in oklab, var(--border) 60%, transparent)"
-            strokeWidth={1}
-          />
-        </svg>
-      ) : null}
-    </div>
+    <NotchedPanelShape stroke="color-mix(in oklab, var(--border) 60%, transparent)" />
   );
 }
 
@@ -307,70 +232,6 @@ function sumLineMachinesProduction(
     expectedAreaToday,
     producedAreaToday,
   };
-}
-
-function productionProgressPercent(produced: number, planned: number) {
-  if (planned <= 0) {
-    return produced > 0 ? 100 : 0;
-  }
-  return Math.round((produced / planned) * 100);
-}
-
-function productionBarFillPercent(produced: number, planned: number) {
-  if (planned <= 0) {
-    return produced > 0 ? 100 : 0;
-  }
-  return Math.min(100, (produced / planned) * 100);
-}
-
-function ProducedPlannedProgressBar({
-  produced,
-  planned,
-  variant = 'default',
-  className,
-}: {
-  produced: number;
-  planned: number;
-  variant?: 'default' | 'on-primary';
-  className?: string;
-}) {
-  const percent = productionProgressPercent(produced, planned);
-  const width = productionBarFillPercent(produced, planned);
-  const complete = planned > 0 && produced >= planned;
-  const inProgress = produced > 0 && !complete;
-
-  return (
-    <div
-      className={cn(
-        'h-1.5 overflow-hidden rounded-full',
-        variant === 'on-primary' ? 'bg-white/25' : 'bg-muted',
-        className,
-      )}
-      role="progressbar"
-      aria-valuenow={Math.round(width)}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-label={`${percent}% do planejado`}
-    >
-      <div
-        className={cn(
-          'h-full rounded-full transition-[width] duration-300 ease-out',
-          variant === 'on-primary'
-            ? complete
-              ? 'bg-white'
-              : inProgress
-                ? 'bg-white/95'
-                : 'bg-white/35'
-            : complete
-              ? 'bg-brand'
-              : inProgress
-                ? 'bg-primary'
-                : 'bg-muted-foreground/35',
-        )}
-        style={{ width: `${width}%` }}
-      />
-    </div>
-  );
 }
 
 const MACHINE_SORTERS: Record<
@@ -541,13 +402,21 @@ function BlockMachinesColumn({
           blockPanelFromRight,
         )}
       >
-        <h2 className="flex items-center justify-between gap-2 border-b border-border/60 pb-3 text-sm font-medium">
-          <span className="flex items-center gap-2">
-            <Cog className="size-4 text-brand" />
-            Máquinas
-          </span>
-          <span className="text-muted-foreground">{machines.length}</span>
-        </h2>
+        <div className="border-b border-border/60 pb-3">
+          <h2 className="flex items-center justify-between gap-2 text-sm font-medium">
+            <span className="flex items-center gap-2">
+              <Cog className="size-4 text-brand" />
+              Máquinas
+            </span>
+            <span className="text-muted-foreground">{machines.length}</span>
+          </h2>
+          <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+            Planejado e produzido consideram OFs com STATUS_DATA{' '}
+            <span className="font-medium text-foreground/80">HOJE</span> ou{' '}
+            <span className="font-medium text-foreground/80">NO ATRASO</span>
+            ; produzido = processos finalizados hoje.
+          </p>
+        </div>
 
         {machines.length > 0 ? (
           <div className="flex items-center gap-2 pt-3">

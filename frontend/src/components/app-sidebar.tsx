@@ -1,4 +1,4 @@
-import { Factory, House, Users } from 'lucide-react';
+import { ChartGantt, Factory, House, Users } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 import logoSystem from '@/public/logo-system.png';
@@ -81,6 +81,19 @@ export function AppSidebar() {
                   <Link to="/controle-produtivo">
                     <Factory />
                     <span>Controle Produtivo</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  size="sm"
+                  tooltip="PMP"
+                  isActive={pathname.startsWith('/pmp')}
+                >
+                  <Link to="/pmp">
+                    <ChartGantt />
+                    <span>PMP</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

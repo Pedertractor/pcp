@@ -7,7 +7,7 @@ import {
   type BlockPlanMimeType,
 } from '../lib/block-plan-storage.js';
 import { AppError } from '../lib/errors.js';
-import { normalizeStatusDate } from '../lib/status-date.js';
+import { isPlanningStatusHojeOuNoAtraso } from '../lib/status-date.js';
 import type {
   BlockDetail,
   BlockSummary,
@@ -61,13 +61,26 @@ function effectiveProcessQuantity(
   return quantity >= 0 ? quantity : 0;
 }
 
-/** Planejamento do card lateral: só HOJE e NO ATRASO (STATUS_DATA normalizado). */
-function isPlanningStatusHojeOuNoAtraso(statusDate: string | null): boolean {
-  const key = normalizeStatusDate(statusDate);
-  return key === 'HOJE' || key === 'NO ATRASO';
+type BlockDayTotals = {
+  expectedPiecesToday: number;
+  expectedAreaToday: number;
+  producedPiecesToday: number;
+  producedAreaToday: number;
+};
+
+function emptyBlockDayTotals(): BlockDayTotals {
+  return {
+    expectedPiecesToday: 0,
+    expectedAreaToday: 0,
+    producedPiecesToday: 0,
+    producedAreaToday: 0,
+  };
 }
 
-function toBlockSummary(block: BlockWithSummary): BlockSummary {
+function toBlockSummary(
+  block: BlockWithSummary,
+  dayTotals: BlockDayTotals = emptyBlockDayTotals(),
+): BlockSummary {
   return {
     id: block.id,
     name: block.name,
@@ -75,6 +88,10 @@ function toBlockSummary(block: BlockWithSummary): BlockSummary {
     costCenters: block.costCenters,
     machinesCount: block._count.machines,
     productionOrdersCount: block._count.productionOrders,
+    expectedPiecesToday: dayTotals.expectedPiecesToday,
+    expectedAreaToday: dayTotals.expectedAreaToday,
+    producedPiecesToday: dayTotals.producedPiecesToday,
+    producedAreaToday: dayTotals.producedAreaToday,
     createdAt: block.createdAt.toISOString(),
     updatedAt: block.updatedAt.toISOString(),
   };
@@ -89,7 +106,86 @@ export class BlockService {
       orderBy: { name: 'asc' },
     });
 
-    return blocks.map(toBlockSummary);
+    const blockIds = blocks.map((block) => block.id);
+    const dayTotalsByBlock = await this.fetchBlockDayTotals(blockIds);
+
+    return blocks.map((block) =>
+      toBlockSummary(block, dayTotalsByBlock.get(block.id) ?? emptyBlockDayTotals()),
+    );
+  }
+
+  private async fetchBlockDayTotals(
+    blockIds: string[],
+  ): Promise<Map<string, BlockDayTotals>> {
+    const totalsByBlock = new Map<string, BlockDayTotals>();
+    for (const blockId of blockIds) {
+      totalsByBlock.set(blockId, emptyBlockDayTotals());
+    }
+    if (blockIds.length === 0) {
+      return totalsByBlock;
+    }
+
+    const orders = await this.prisma.productionOrder.findMany({
+      where: { blockId: { in: blockIds } },
+      select: {
+        blockId: true,
+        quantity: true,
+        area: true,
+        statusDate: true,
+      },
+    });
+
+    for (const order of orders) {
+      if (!isPlanningStatusHojeOuNoAtraso(order.statusDate)) {
+        continue;
+      }
+      const totals = totalsByBlock.get(order.blockId);
+      if (!totals) {
+        continue;
+      }
+      totals.expectedPiecesToday += order.quantity;
+      totals.expectedAreaToday += (order.area ?? 0) * order.quantity;
+    }
+
+    const { start: dayStart, end: dayEnd } = localDayRange();
+    const finishedProcesses = await this.prisma.productionProcess.findMany({
+      where: {
+        blockId: { in: blockIds },
+        finishedAt: { not: null, gte: dayStart, lt: dayEnd },
+      },
+      select: {
+        blockId: true,
+        quantity: true,
+        quantityReported: true,
+        area: true,
+        productionOrder: { select: { area: true, statusDate: true } },
+      },
+    });
+
+    for (const proc of finishedProcesses) {
+      if (!isPlanningStatusHojeOuNoAtraso(proc.productionOrder.statusDate)) {
+        continue;
+      }
+      const totals = totalsByBlock.get(proc.blockId);
+      if (!totals) {
+        continue;
+      }
+      const m2PerPiece =
+        proc.area ?? proc.productionOrder.area ?? 0;
+      const qty = effectiveProcessQuantity(
+        proc.quantityReported,
+        proc.quantity,
+      );
+      totals.producedPiecesToday += qty;
+      totals.producedAreaToday += m2PerPiece * qty;
+    }
+
+    for (const totals of totalsByBlock.values()) {
+      totals.expectedAreaToday = roundArea(totals.expectedAreaToday);
+      totals.producedAreaToday = roundArea(totals.producedAreaToday);
+    }
+
+    return totalsByBlock;
   }
 
   async getBlock(id: string): Promise<BlockDetail> {
@@ -217,7 +313,12 @@ export class BlockService {
     }
 
     return {
-      ...toBlockSummary(block),
+      ...toBlockSummary(block, {
+        expectedPiecesToday,
+        expectedAreaToday: roundArea(expectedAreaToday),
+        producedPiecesToday,
+        producedAreaToday: roundArea(producedAreaToday),
+      }),
       blockPlanImage: block.blockPlanImage
         ? {
             ...block.blockPlanImage,
@@ -243,10 +344,6 @@ export class BlockService {
           totalsByMachine.get(machine.id)?.producedArea ?? 0,
         ),
       })),
-      expectedPiecesToday,
-      expectedAreaToday: roundArea(expectedAreaToday),
-      producedPiecesToday,
-      producedAreaToday: roundArea(producedAreaToday),
     };
   }
 

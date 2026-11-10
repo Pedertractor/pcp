@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Boxes, Clock, Lock } from 'lucide-react';
+import { ArrowRight, Boxes } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -12,6 +12,10 @@ import {
   blocksListQueryKey,
   listBlocks,
 } from '@/services/blocks/block.service';
+import {
+  listPmpBlocks,
+  pmpBlocksListQueryKey,
+} from '@/services/pmp/pmp-block.service';
 
 type HoveredSide = 'control' | 'pmp' | null;
 
@@ -65,6 +69,12 @@ export function HomePage() {
     queryFn: listBlocks,
   });
   const blocksCount = blocksQuery.data?.length;
+
+  const pmpBlocksQuery = useQuery({
+    queryKey: pmpBlocksListQueryKey,
+    queryFn: listPmpBlocks,
+  });
+  const pmpBlocksCount = pmpBlocksQuery.data?.length;
 
   const firstName = user?.name
     ? capitalize(user.name.split(' ')[0] ?? '')
@@ -140,11 +150,13 @@ export function HomePage() {
         </div>
       </Link>
 
-      <div
-        role="group"
-        aria-label="PMP — Plano Mestre de Produção, em breve"
+      <Link
+        to="/pmp"
+        aria-label="PMP — Plano Mestre de Produção"
         onMouseEnter={() => setHovered('pmp')}
         onMouseLeave={() => setHovered(null)}
+        onFocus={() => setHovered('pmp')}
+        onBlur={() => setHovered(null)}
         className={cn(
           'group/pmp relative flex min-h-[22rem] flex-1 overflow-hidden bg-[#0b0b0b] text-white transition-[clip-path] duration-500 ease-out lg:absolute lg:inset-0 lg:min-h-0',
           PMP_CLIP[hovered ?? 'idle'],
@@ -159,13 +171,6 @@ export function HomePage() {
             sideOpacity(hovered, 'pmp'),
           )}
         >
-          <div className="flex h-10 items-start">
-            <span className="inline-flex items-center gap-1.5 rounded-full border-2 border-primary px-3 py-1 text-xs font-semibold">
-              <Clock className="size-3.5 text-primary" aria-hidden />
-              Em breve
-            </span>
-          </div>
-
           <img
             src={pmpImage}
             alt=""
@@ -174,27 +179,24 @@ export function HomePage() {
             draggable={false}
           />
 
-          <div>
-          
-            <p className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Plano Mestre de Produção
-            </p>
-          </div>
+          <p className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Plano Mestre de Produção
+          </p>
 
-          <button
-            type="button"
-            disabled
-            title="Disponível em breve"
-            className="inline-flex h-12 cursor-not-allowed items-center gap-3 rounded-full bg-white/10 pr-6 pl-2 text-sm font-medium text-white/60 ring-1 ring-white/15"
-          >
-            <span className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white/70">
-              <Lock className="size-4" />
+          <span className="inline-flex h-12 items-center gap-3 rounded-full bg-primary pr-6 pl-2 text-sm font-medium text-primary-foreground transition-transform group-hover/pmp:scale-[1.02]">
+            <span className="flex size-8 items-center justify-center rounded-full bg-primary-foreground/15">
+              <Boxes className="size-4" />
             </span>
             Acessar PMP
-            <ArrowRight className="size-4" />
-          </button>
+            <ArrowRight className="size-4 transition-transform group-hover/pmp:translate-x-1" />
+          </span>
+          {pmpBlocksCount !== undefined ? (
+            <span className="text-sm text-white/70">
+              {pmpBlocksCount} bloco{pmpBlocksCount === 1 ? '' : 's'} PMP
+            </span>
+          ) : null}
         </div>
-      </div>
+      </Link>
     </div>
   );
 }

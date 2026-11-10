@@ -1,8 +1,14 @@
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+import {
+  ProducedPlannedProgressBar,
+  productionProgressPercent,
+} from '@/components/blocks/produced-planned-progress';
 import paintSectorImage from '@/public/production-control-block/paint.png';
 import { BLOCK_SECTOR_LABELS, type BlockSector, type BlockSummary } from '@/types/block';
+
+const piecesFormatter = new Intl.NumberFormat('pt-BR');
 
 const BLOCK_SECTOR_IMAGES: Record<BlockSector, string> = {
   PAINT: paintSectorImage,
@@ -46,11 +52,32 @@ export function BlockCard({ block }: { block: BlockSummary }) {
           ))}
         </div>
 
-        <p className="mt-auto text-sm opacity-85">
-          {block.machinesCount} máquinas ·{' '}
-          {block.productionOrdersCount} OFs ·{' '}
-          hoje
-        </p>
+        <div className="mt-auto space-y-2">
+          <p className="text-sm opacity-85">
+            {block.machinesCount} máquinas · {block.productionOrdersCount} OFs
+          </p>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold tabular-nums">
+              {piecesFormatter.format(block.producedPiecesToday)} /{' '}
+              {piecesFormatter.format(block.expectedPiecesToday)} pç hoje
+              {block.expectedPiecesToday > 0 ? (
+                <span className="ml-1 font-medium opacity-80">
+                  (
+                  {productionProgressPercent(
+                    block.producedPiecesToday,
+                    block.expectedPiecesToday,
+                  )}
+                  %)
+                </span>
+              ) : null}
+            </p>
+            <ProducedPlannedProgressBar
+              variant="on-primary"
+              produced={block.producedPiecesToday}
+              planned={block.expectedPiecesToday}
+            />
+          </div>
+        </div>
       </div>
     </Link>
   );

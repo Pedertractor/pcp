@@ -26,6 +26,10 @@ export const blockSummarySchema = z.object({
   costCenters: z.array(costCenterSchema),
   machinesCount: z.number(),
   productionOrdersCount: z.number(),
+  expectedPiecesToday: z.number(),
+  expectedAreaToday: z.number(),
+  producedPiecesToday: z.number(),
+  producedAreaToday: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -62,10 +66,6 @@ export const blockDetailSchema = blockSummarySchema.extend({
   blockPlanImage: blockPlanImageSchema.nullable(),
   lines: z.array(blockLineSchema),
   machines: z.array(machineSchema),
-  expectedPiecesToday: z.number(),
-  expectedAreaToday: z.number(),
-  producedPiecesToday: z.number(),
-  producedAreaToday: z.number(),
 });
 
 export type BlockDetail = z.infer<typeof blockDetailSchema>;

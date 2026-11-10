@@ -5,4 +5,5 @@ export type SectorOption = {
   normalizedName: string;
   operationId: number | null;
   linkedBlock: { id: string; name: string } | null;
+  linkedPmpBlock: { id: string; name: string } | null;
 };

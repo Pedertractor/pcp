@@ -274,3 +274,192 @@ model ProductionProcess {
   @@index([machineId])
   @@map("production_processes")
 }
+
+// ---------------------------------------------------------------------------
+// PMP — Plano Mestre de Produção (domínio separado do Block do Controle Produtivo)
+// ---------------------------------------------------------------------------
+
+/// Imagem temática do bloco PMP (fundo transparente; PNG ou WEBP).
+model PmpBlockThemeImage {
+  id           String   @id @default(uuid())
+  name         String
+  originalName String?  @map("original_name")
+  url          String
+  mimeType     String?  @map("mime_type")
+  size         Int?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  pmpBlock PmpBlock?
+
+  @@map("pmp_block_theme_images")
+}
+
+/// Agrupamento organizacional do PMP; cada bloco concentra CCs, operações e metas semanais.
+model PmpBlock {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  themeImageId String?  @unique @map("theme_image_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  themeImage  PmpBlockThemeImage? @relation(fields: [themeImageId], references: [id], onDelete: SetNull)
+  costCenters PmpCostCenter[]
+  series      PmpSeries[]
+  weeklyGoals ProductionWeeklyGoal[]
+
+  @@map("pmp_blocks")
+}
+
+/// Série de peças do bloco PMP; o bloco só aceita metas cujo `productCode` está em alguma série dele.
+model PmpSeries {
+  id         String   @id @default(uuid())
+  pmpBlockId String   @map("pmp_block_id")
+  name       String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  pmpBlock PmpBlock        @relation(fields: [pmpBlockId], references: [id], onDelete: Cascade)
+  parts    PmpSeriesPart[]
+
+  @@unique([pmpBlockId, name])
+  @@index([pmpBlockId])
+  @@map("pmp_series")
+}
+
+/// Código de peça (coluna "CODIGO SOLDA" / PRODUTO da planilha) pertencente a uma série.
+model PmpSeriesPart {
+  id          String   @id @default(uuid())
+  pmpSeriesId String   @map("pmp_series_id")
+  partCode    String   @map("part_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  pmpSeries PmpSeries @relation(fields: [pmpSeriesId], references: [id], onDelete: Cascade)
+
+  @@unique([pmpSeriesId, partCode])
+  @@index([partCode])
+  @@map("pmp_series_parts")
+}
+
+/// Centro de custo vinculado a um bloco PMP; `sectorIdApi` identifica o setor na API externa.
+model PmpCostCenter {
+  id           String  @id @default(uuid())
+  pmpBlockId   String  @map("pmp_block_id")
+  costCenter   String  @map("cost_center")
+  sectorName   String? @map("sector_name")
+  sectorIdApi  String  @map("sector_id_api")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pmpBlock   PmpBlock                 @relation(fields: [pmpBlockId], references: [id], onDelete: Cascade)
+  operations PmpCostCenterOperation[]
+
+  @@unique([pmpBlockId, costCenter])
+  @@unique([pmpBlockId, sectorIdApi])
+  @@index([pmpBlockId])
+  @@map("pmp_cost_centers")
+}
+
+/// Operação produtiva sob um centro de custo (uma CC pode ter várias operações).
+model PmpCostCenterOperation {
+  id              String @id @default(uuid())
+  pmpCostCenterId String @map("pmp_cost_center_id")
+  operation       Int
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pmpCostCenter PmpCostCenter          @relation(fields: [pmpCostCenterId], references: [id], onDelete: Cascade)
+  weeklyGoals   ProductionWeeklyGoal[]
+
+  @@unique([pmpCostCenterId, operation])
+  @@index([pmpCostCenterId])
+  @@map("pmp_cost_center_operations")
+}
+
+model ProductionWeeklyGoal {
+  id                       String   @id @default(uuid())
+  pmpBlockId               String   @map("pmp_block_id")
+  pmpCostCenterOperationId String   @map("pmp_cost_center_operation_id")
+
+  productCode     String  @map("product_code")
+  productName     String? @map("product_name")
+
+  weekStart DateTime @map("week_start") @db.Date
+  weekEnd   DateTime @map("week_end") @db.Date
+
+  plannedQuantity  Int @map("planned_quantity")
+  producedQuantity Int @default(0) @map("produced_quantity")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pmpBlock               PmpBlock               @relation(fields: [pmpBlockId], references: [id], onDelete: Cascade)
+  pmpCostCenterOperation PmpCostCenterOperation @relation(fields: [pmpCostCenterOperationId], references: [id], onDelete: Restrict)
+  dailyGoals             ProductionDailyGoal[]
+
+  @@unique([pmpBlockId, productCode, pmpCostCenterOperationId, weekStart])
+  @@index([weekStart, pmpCostCenterOperationId])
+  @@index([pmpBlockId, weekStart])
+  @@map("production_weekly_goals")
+}
+
+model ProductionDailyGoal {
+  id               String   @id @default(uuid())
+  weeklyGoalId     String   @map("weekly_goal_id")
+
+  date             DateTime @db.Date
+  plannedQuantity  Int      @map("planned_quantity")
+  producedQuantity Int      @default(0) @map("produced_quantity")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  weeklyGoal    ProductionWeeklyGoal       @relation(fields: [weeklyGoalId], references: [id], onDelete: Cascade)
+  orders        ProductionDailyGoalOrder[]
+  loansGiven    ProductionGoalLoan[]       @relation("LoanSource")
+  loansReceived ProductionGoalLoan[]       @relation("LoanTarget")
+
+  @@unique([weeklyGoalId, date])
+  @@index([date])
+  @@map("production_daily_goals")
+}
+
+model ProductionDailyGoalOrder {
+  id          String @id @default(uuid())
+  dailyGoalId String @map("daily_goal_id")
+
+  externalOrderId   String @map("external_order_id")
+  operation         Int
+  allocatedQuantity Int    @map("allocated_quantity")
+  producedQuantity  Int    @default(0) @map("produced_quantity")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  dailyGoal ProductionDailyGoal @relation(fields: [dailyGoalId], references: [id], onDelete: Cascade)
+
+  @@unique([dailyGoalId, externalOrderId, operation])
+  @@index([externalOrderId, operation])
+  @@map("production_daily_goal_orders")
+}
+
+model ProductionGoalLoan {
+  id                String @id @default(uuid())
+  sourceDailyGoalId String @map("source_daily_goal_id")
+  targetDailyGoalId String @map("target_daily_goal_id")
+
+  sourceOrderId    String @map("source_order_id")
+  borrowedQuantity Int    @map("borrowed_quantity")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  sourceDailyGoal ProductionDailyGoal @relation("LoanSource", fields: [sourceDailyGoalId], references: [id], onDelete: Restrict)
+  targetDailyGoal ProductionDailyGoal @relation("LoanTarget", fields: [targetDailyGoalId], references: [id], onDelete: Restrict)
+
+  @@index([sourceDailyGoalId])
+  @@index([targetDailyGoalId])
+  @@index([sourceOrderId])
+  @@map("production_goal_loans")
+}

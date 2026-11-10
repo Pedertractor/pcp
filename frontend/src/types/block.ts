@@ -20,6 +20,10 @@ export type BlockSummary = {
   costCenters: CostCenter[];
   machinesCount: number;
   productionOrdersCount: number;
+  expectedPiecesToday: number;
+  expectedAreaToday: number;
+  producedPiecesToday: number;
+  producedAreaToday: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -81,10 +85,6 @@ export type BlockDetail = BlockSummary & {
   blockPlanImage: BlockPlanImage | null;
   lines: BlockLine[];
   machines: BlockMachine[];
-  expectedPiecesToday: number;
-  expectedAreaToday: number;
-  producedPiecesToday: number;
-  producedAreaToday: number;
 };
 
 export type ProductionOrderStatus =
