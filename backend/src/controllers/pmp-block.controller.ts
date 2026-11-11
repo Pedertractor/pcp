@@ -40,6 +40,18 @@ export async function listPmpWeeklyGoalsController(
   return reply.status(200).send(goals);
 }
 
+export async function getPmpBlockDashboardController(
+  req: FastifyRequest<{
+    Params: PmpBlockIdParams;
+    Querystring: PmpWeeklyGoalsQuery;
+  }>,
+  reply: FastifyReply,
+) {
+  const service = new PmpGoalService(req.server.prisma);
+  const dashboard = await service.getDashboard(req.params.id, req.query.weekStart);
+  return reply.status(200).send(dashboard);
+}
+
 export async function getPmpWeeklyGoalController(
   req: FastifyRequest<{ Params: PmpWeeklyGoalParams }>,
   reply: FastifyReply,

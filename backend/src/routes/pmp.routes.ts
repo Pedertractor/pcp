@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   createPmpBlockController,
   getPmpBlockController,
+  getPmpBlockDashboardController,
   getPmpBlockThemeImageController,
   getPmpWeeklyGoalController,
   listPmpBlocksController,
@@ -24,6 +25,7 @@ import {
 import {
   listPmpBlockWeeksResponseSchema,
   listPmpWeeklyGoalsResponseSchema,
+  pmpBlockDashboardSchema,
   pmpWeeklyGoalDetailSchema,
   pmpWeeklyGoalParamsSchema,
   pmpWeeklyGoalsQuerySchema,
@@ -67,6 +69,25 @@ export function pmpRoutes(fastify: FastifyInstance) {
       onRequest: [fastify.authenticate],
     },
     listPmpWeeklyGoalsController,
+  );
+
+  fastify.get<{ Params: PmpBlockIdParams; Querystring: PmpWeeklyGoalsQuery }>(
+    '/blocks/:id/dashboard',
+    {
+      schema: {
+        summary: 'PMP block dashboard for one week (totals, by cost center, by day)',
+        tags: ['PMP'],
+        security: [{ cookieAuth: [] }],
+        params: pmpBlockIdParamsSchema,
+        querystring: pmpWeeklyGoalsQuerySchema,
+        response: {
+          200: pmpBlockDashboardSchema.describe('Week dashboard'),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    getPmpBlockDashboardController,
   );
 
   fastify.get<{ Params: PmpWeeklyGoalParams }>(

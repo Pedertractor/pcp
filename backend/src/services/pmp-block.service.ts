@@ -82,7 +82,7 @@ function normalizeSeries(inputs: PmpSeriesInput[]) {
     const name = item.name.trim();
     const key = name.toLocaleUpperCase('pt-BR');
     if (names.has(key)) {
-      throw new AppError(`Série "${name}" repetida na lista.`, 400);
+      throw new AppError(`Classe "${name}" repetida na lista.`, 400);
     }
     names.add(key);
     const partsByKey = new Map<string, SeriesPart>();

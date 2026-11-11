@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { PmpSeries, PmpSeriesInput, PmpSeriesPart } from '@/types/pmp-block';
 
+export const MAX_CLASSES_PER_BLOCK = 1;
+
 export type PmpSeriesDraft = {
   key: string;
   name: string;
@@ -124,11 +126,11 @@ function SeriesCard({ series, onChange, onRemove }: SeriesCardProps) {
     <div className="space-y-2 rounded-lg border border-border/60 bg-muted/30 p-3">
       <div className="flex items-center gap-2">
         <Input
-          placeholder="Nome da série (ex.: A)"
+          placeholder="Nome da classe (ex.: A)"
           value={series.name}
           onChange={(event) => onChange({ name: event.target.value })}
           className="h-9 max-w-60"
-          aria-label="Nome da série"
+          aria-label="Nome da classe"
         />
         <Badge variant="secondary" className="tabular-nums">
           {count} {count === 1 ? 'peça' : 'peças'}
@@ -138,7 +140,7 @@ function SeriesCard({ series, onChange, onRemove }: SeriesCardProps) {
           variant="ghost"
           size="icon"
           className="ml-auto size-8"
-          aria-label={`Remover série ${series.name}`}
+          aria-label={`Remover classe ${series.name}`}
           onClick={onRemove}
         >
           <Trash2 className="size-4" />
@@ -189,7 +191,7 @@ function SeriesCard({ series, onChange, onRemove }: SeriesCardProps) {
           onKeyDown={handleEnter}
           onPaste={handlePaste}
           className="h-9 flex-1 font-mono"
-          aria-label={`Novo código de peça para a série ${series.name}`}
+          aria-label={`Novo código de peça para a classe ${series.name}`}
         />
         <Input
           placeholder="Operação"
@@ -198,7 +200,7 @@ function SeriesCard({ series, onChange, onRemove }: SeriesCardProps) {
           onChange={(event) => setOperationDraft(event.target.value.replace(/\D/g, ''))}
           onKeyDown={handleEnter}
           className="h-9 w-28 font-mono"
-          aria-label={`Operação da nova peça na série ${series.name}`}
+          aria-label={`Operação da nova peça na classe ${series.name}`}
         />
         <Button type="button" variant="secondary" size="sm" onClick={addPart}>
           <Plus className="size-4" />
@@ -227,7 +229,7 @@ export function PmpSeriesEditor({ value, onChange }: PmpSeriesEditorProps) {
     <div className="space-y-3">
       {value.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nenhuma série. Sem série, o bloco não aceita metas na importação.
+          Nenhuma classe. Sem classe, o bloco não aceita metas na importação.
         </p>
       ) : (
         value.map((series) => (
@@ -239,15 +241,17 @@ export function PmpSeriesEditor({ value, onChange }: PmpSeriesEditorProps) {
           />
         ))
       )}
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        onClick={() => onChange([...value, { key: crypto.randomUUID(), name: '', parts: [] }])}
-      >
-        <Plus className="size-4" />
-        Adicionar série
-      </Button>
+      {value.length < MAX_CLASSES_PER_BLOCK ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => onChange([...value, { key: crypto.randomUUID(), name: '', parts: [] }])}
+        >
+          <Plus className="size-4" />
+          Adicionar classe
+        </Button>
+      ) : null}
     </div>
   );
 }

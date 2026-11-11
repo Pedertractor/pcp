@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { SectorPicker } from '@/components/blocks/sector-picker';
 import { PmpCostCenterOperationsTable } from '@/components/pmp/pmp-cost-center-operations-editor';
 import {
+  MAX_CLASSES_PER_BLOCK,
   PmpSeriesEditor,
   toSeriesDrafts,
   toSeriesInput,
@@ -58,7 +59,7 @@ type UpsertStep = 'general' | 'costCenters' | 'series';
 const STEPS: Array<{ id: UpsertStep; title: string; icon: typeof Boxes }> = [
   { id: 'general', title: 'Nome e imagem temática', icon: Boxes },
   { id: 'costCenters', title: 'Centros de custo', icon: Receipt },
-  { id: 'series', title: 'Peças de série', icon: Layers },
+  { id: 'series', title: 'Classe', icon: Layers },
 ];
 
 function buildOperationsMap(block: PmpBlockSummary): Record<string, number[]> {
@@ -244,22 +245,19 @@ export function PmpBlockUpsertDialog({
         : 'Selecione ao menos um centro de custo.';
     }
     if (seriesDrafts.length === 0) {
-      return 'Cadastre a série e as peças + operações (CONCATENAR) que o PMP balanceado vai considerar.';
+      return 'Cadastre a classe e as peças + operações (CONCATENAR) que o PMP balanceado vai considerar.';
     }
-    const seriesNames = seriesDrafts.map((item) =>
-      item.name.trim().toLocaleUpperCase('pt-BR'),
-    );
-    if (seriesNames.some((item) => !item)) {
-      return 'Informe o nome de todas as séries.';
+    if (seriesDrafts.length > MAX_CLASSES_PER_BLOCK) {
+      return 'O bloco aceita somente uma classe.';
     }
-    if (new Set(seriesNames).size !== seriesNames.length) {
-      return 'Há séries com o mesmo nome.';
+    if (seriesDrafts.some((item) => !item.name.trim())) {
+      return 'Informe o nome da classe.';
     }
     const emptySeries = seriesDrafts.find(
       (item) => item.parts.length === 0,
     );
     if (emptySeries) {
-      return `Informe ao menos uma peça + operação na série "${emptySeries.name.trim()}".`;
+      return `Informe ao menos uma peça + operação na classe "${emptySeries.name.trim()}".`;
     }
     return null;
   }
@@ -316,7 +314,7 @@ export function PmpBlockUpsertDialog({
   const stepSummary: Record<UpsertStep, string> = {
     general: name.trim() || 'Sem nome',
     costCenters: `${sectorIds.length} CC · ${operationsCount} ${operationsCount === 1 ? 'operação' : 'operações'}`,
-    series: `${seriesDrafts.length} ${seriesDrafts.length === 1 ? 'série' : 'séries'} · ${partCodesCount} ${partCodesCount === 1 ? 'peça' : 'peças'}`,
+    series: `${seriesDrafts[0]?.name.trim() ? `Classe ${seriesDrafts[0].name.trim()}` : 'Sem classe'} · ${partCodesCount} ${partCodesCount === 1 ? 'peça' : 'peças'}`,
   };
   const isLastStep = step === STEPS[STEPS.length - 1]!.id;
 
@@ -340,8 +338,8 @@ export function PmpBlockUpsertDialog({
             {isEdit ? 'Editar bloco PMP' : 'Novo bloco PMP'}
           </DialogTitle>
           <DialogDescription>
-            Defina o bloco, os centros de custo com suas operações e as peças de
-            série que o PMP balanceado vai considerar.
+            Defina o bloco, os centros de custo com suas operações e as peças da
+            classe que o PMP balanceado vai considerar.
           </DialogDescription>
         </DialogHeader>
 
@@ -487,10 +485,10 @@ export function PmpBlockUpsertDialog({
             <div className="grid gap-3">
               <Label className="flex items-center gap-2">
                 <Layers className="size-4 text-muted-foreground" />
-                Peças de série
+                Classe
               </Label>
               <p className="-mt-1 text-xs text-muted-foreground">
-                Informe a série e as peças com a operação de cada uma (o
+                Informe a classe (uma por bloco) e as peças com a operação de cada uma (o
                 CONCATENAR da planilha: código da peça + operação). O bloco só
                 aceita metas desses CONCATENAR.
               </p>

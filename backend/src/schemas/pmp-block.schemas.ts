@@ -62,7 +62,7 @@ const pmpCostCenterInputSchema = z.object({
 });
 
 const pmpSeriesInputSchema = z.object({
-  name: z.string().trim().min(1, 'Informe o nome da série').max(60),
+  name: z.string().trim().min(1, 'Informe o nome da classe').max(60),
   parts: z
     .array(
       z.object({
@@ -75,12 +75,17 @@ const pmpSeriesInputSchema = z.object({
 
 export type PmpSeriesInput = z.infer<typeof pmpSeriesInputSchema>;
 
+/** Cada bloco PMP tem somente uma classe (série). */
+const pmpSeriesListSchema = z
+  .array(pmpSeriesInputSchema)
+  .max(1, 'O bloco aceita somente uma classe');
+
 export const createPmpBlockBodySchema = z.object({
   name: z.string().trim().min(1, 'Informe o nome do bloco').max(120),
   costCenters: z
     .array(pmpCostCenterInputSchema)
     .min(1, 'Selecione ao menos um centro de custo'),
-  series: z.array(pmpSeriesInputSchema).default([]),
+  series: pmpSeriesListSchema.default([]),
 });
 
 export type CreatePmpBlockBody = z.infer<typeof createPmpBlockBodySchema>;
@@ -88,7 +93,7 @@ export type CreatePmpBlockBody = z.infer<typeof createPmpBlockBodySchema>;
 export const updatePmpBlockBodySchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   costCenters: z.array(pmpCostCenterInputSchema).min(1),
-  series: z.array(pmpSeriesInputSchema).optional(),
+  series: pmpSeriesListSchema.optional(),
 });
 
 export type UpdatePmpBlockBody = z.infer<typeof updatePmpBlockBodySchema>;

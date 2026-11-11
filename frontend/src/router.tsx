@@ -10,6 +10,7 @@ import { BlockDetailPage } from '@/pages/blocks/block-detail-page';
 import { BlockProductionOrdersPage } from '@/pages/blocks/block-production-orders-page';
 import { BlockProductionOrderProcessesPage } from '@/pages/blocks/block-production-order-processes-page';
 import { BlocksPage } from '@/pages/blocks/blocks-page';
+import { PmpBlockDashboardPage } from '@/pages/pmp/pmp-block-dashboard-page';
 import { PmpBlockWeeksPage } from '@/pages/pmp/pmp-block-weeks-page';
 import { PmpBlocksPage } from '@/pages/pmp/pmp-blocks-page';
 import { PmpWeeklyGoalDaysPage } from '@/pages/pmp/pmp-weekly-goal-days-page';
@@ -36,6 +37,7 @@ export function AppRouter() {
             element={<BlockProductionOrderProcessesPage />}
           />
           <Route path="/pmp/:blockId" element={<PmpBlockWeeksPage />} />
+          <Route path="/pmp/:blockId/dashboard" element={<PmpBlockDashboardPage />} />
           <Route
             path="/pmp/:blockId/metas/:goalId"
             element={<PmpWeeklyGoalDaysPage />}

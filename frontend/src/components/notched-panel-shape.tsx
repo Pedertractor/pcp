@@ -40,8 +40,26 @@ function notchedPanelPath(
   ].join(' ');
 }
 
+/** O caminho base tem o recorte no canto inferior esquerdo; os demais cantos são espelhamentos. */
+function cornerTransform(
+  corner: NonNullable<NotchedPanelShapeProps['corner']>,
+  width: number,
+  height: number,
+) {
+  switch (corner) {
+    case 'bottom-right':
+      return `translate(${width} 0) scale(-1 1)`;
+    case 'top-left':
+      return `translate(0 ${height}) scale(1 -1)`;
+    case 'top-right':
+      return `translate(${width} ${height}) scale(-1 -1)`;
+    default:
+      return undefined;
+  }
+}
+
 type NotchedPanelShapeProps = {
-  corner?: 'bottom-left' | 'bottom-right';
+  corner?: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right';
   className?: string;
   stroke?: string;
 };
@@ -92,11 +110,7 @@ export function NotchedPanelShape({
             className={cn(className)}
             stroke={stroke}
             strokeWidth={stroke ? 1 : undefined}
-            transform={
-              corner === 'bottom-right'
-                ? `translate(${size.width} 0) scale(-1 1)`
-                : undefined
-            }
+            transform={cornerTransform(corner, size.width, size.height)}
           />
         </svg>
       ) : null}

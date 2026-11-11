@@ -69,6 +69,29 @@ export const pmpWeeklyGoalParamsSchema = z.object({
 
 export type PmpWeeklyGoalParams = z.infer<typeof pmpWeeklyGoalParamsSchema>;
 
+const plannedProducedSchema = z.object({
+  plannedQuantity: z.number(),
+  producedQuantity: z.number(),
+});
+
+export const pmpBlockDashboardSchema = z.object({
+  blockId: z.string(),
+  blockName: z.string(),
+  weekStart: z.string(),
+  weekEnd: z.string(),
+  goalsCount: z.number(),
+  totals: plannedProducedSchema,
+  costCenters: z.array(
+    plannedProducedSchema.extend({
+      costCenter: z.string(),
+      sectorName: z.string().nullable(),
+      goalsCount: z.number(),
+    }),
+  ),
+  days: z.array(plannedProducedSchema.extend({ date: z.string() })),
+});
+
+export type PmpBlockDashboard = z.infer<typeof pmpBlockDashboardSchema>;
 export type PmpBlockWeek = z.infer<typeof pmpBlockWeekSchema>;
 export type PmpWeeklyGoalItem = z.infer<typeof pmpWeeklyGoalItemSchema>;
 export type PmpWeeklyGoalDetail = z.infer<typeof pmpWeeklyGoalDetailSchema>;

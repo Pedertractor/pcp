@@ -14,8 +14,6 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { toast } from 'sonner';
-
 import {
   ProducedPlannedProgressBar,
   productionProgressPercent,
@@ -393,7 +391,7 @@ export function PmpBlockWeeksPage() {
       <aside className="lg:h-full lg:min-h-0">
         <button
           type="button"
-          onClick={() => toast.info('Dashboard do PMP em breve.')}
+          onClick={() => navigate(`/pmp/${blockId}/dashboard?semana=${weekParam}`)}
           className="group relative flex h-full min-h-80 w-full flex-col items-center justify-center gap-8 rounded-2xl p-6 text-zinc-50 drop-shadow-sm transition-all hover:-translate-y-0.5 hover:drop-shadow-lg focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none xl:p-8"
         >
           <NotchedPanelShape corner="bottom-right" className="fill-zinc-500" />

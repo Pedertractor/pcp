@@ -1,5 +1,6 @@
 import { httpClient } from '@/lib/http-client';
 import type {
+  PmpBlockDashboard,
   PmpBlockWeek,
   PmpWeeklyGoalDetail,
   PmpWeeklyGoalItem,
@@ -15,6 +16,19 @@ export function pmpWeeklyGoalsQueryKey(blockId: string, weekStart: string) {
 
 export function pmpWeeklyGoalDetailQueryKey(blockId: string, goalId: string) {
   return ['pmp', 'blocks', blockId, 'weekly-goals', 'detail', goalId] as const;
+}
+
+export function pmpBlockDashboardQueryKey(blockId: string, weekStart: string) {
+  return ['pmp', 'blocks', blockId, 'dashboard', weekStart] as const;
+}
+
+export async function getPmpBlockDashboard(
+  blockId: string,
+  weekStart: string,
+): Promise<PmpBlockDashboard> {
+  return httpClient.get<PmpBlockDashboard>(`/pmp/blocks/${blockId}/dashboard`, {
+    params: { weekStart },
+  });
 }
 
 export async function listPmpBlockWeeks(

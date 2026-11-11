@@ -1,6 +1,7 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { AppError } from '../lib/errors.js';
 import type {
+  PmpBlockDashboard,
   PmpBlockWeek,
   PmpWeeklyGoalDetail,
   PmpWeeklyGoalItem,
@@ -110,6 +111,69 @@ export class PmpGoalService {
           a.costCenter.localeCompare(b.costCenter, 'pt-BR', { numeric: true }) ||
           a.operation - b.operation,
       );
+  }
+
+  async getDashboard(blockId: string, weekStart: string): Promise<PmpBlockDashboard> {
+    const block = await this.ensureBlock(blockId);
+    const start = fromDateKey(weekStart);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 4);
+
+    const [goals, days] = await Promise.all([
+      this.prisma.productionWeeklyGoal.findMany({
+        where: { pmpBlockId: blockId, weekStart: start },
+        select: {
+          plannedQuantity: true,
+          producedQuantity: true,
+          weekEnd: true,
+          pmpCostCenterOperation: {
+            select: { pmpCostCenter: { select: { costCenter: true, sectorName: true } } },
+          },
+        },
+      }),
+      this.prisma.productionDailyGoal.groupBy({
+        by: ['date'],
+        where: { weeklyGoal: { pmpBlockId: blockId, weekStart: start } },
+        _sum: { plannedQuantity: true, producedQuantity: true },
+        orderBy: { date: 'asc' },
+      }),
+    ]);
+
+    const byCostCenter = new Map<string, PmpBlockDashboard['costCenters'][number]>();
+    for (const goal of goals) {
+      const cc = goal.pmpCostCenterOperation.pmpCostCenter;
+      const item = byCostCenter.get(cc.costCenter) ?? {
+        costCenter: cc.costCenter,
+        sectorName: cc.sectorName,
+        goalsCount: 0,
+        plannedQuantity: 0,
+        producedQuantity: 0,
+      };
+      item.goalsCount += 1;
+      item.plannedQuantity += goal.plannedQuantity;
+      item.producedQuantity += goal.producedQuantity;
+      byCostCenter.set(cc.costCenter, item);
+    }
+
+    return {
+      blockId: block.id,
+      blockName: block.name,
+      weekStart,
+      weekEnd: toDateKey(goals[0]?.weekEnd ?? end),
+      goalsCount: goals.length,
+      totals: {
+        plannedQuantity: goals.reduce((total, goal) => total + goal.plannedQuantity, 0),
+        producedQuantity: goals.reduce((total, goal) => total + goal.producedQuantity, 0),
+      },
+      costCenters: [...byCostCenter.values()].sort((a, b) =>
+        a.costCenter.localeCompare(b.costCenter, 'pt-BR', { numeric: true }),
+      ),
+      days: days.map((day) => ({
+        date: toDateKey(day.date),
+        plannedQuantity: day._sum.plannedQuantity ?? 0,
+        producedQuantity: day._sum.producedQuantity ?? 0,
+      })),
+    };
   }
 
   async getWeeklyGoal(
