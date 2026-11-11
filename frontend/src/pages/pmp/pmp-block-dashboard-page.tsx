@@ -281,7 +281,7 @@ export function PmpBlockDashboardPage() {
                   <span className="inline-flex size-9 items-center justify-center rounded-lg bg-brand-foreground/10">
                     <Gauge className="size-5" aria-hidden />
                   </span>
-                  Acelerador da semana
+                  Atendimento PMP
                 </CardTitle>
                 <CardDescription className="text-brand-foreground/70">
                   Total realizado / planejado
