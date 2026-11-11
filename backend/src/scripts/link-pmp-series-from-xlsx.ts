@@ -1,7 +1,7 @@
 /**
- * Vincula uma série ao bloco PMP com os códigos de peça da aba "PMP BALANCEADO"
- * (coluna "CODIGO SOLDA", equivalente ao PRODUTO usado nas metas semanais).
- * Substitui todos os códigos já cadastrados na série.
+ * Vincula uma série ao bloco PMP com as linhas da aba "PMP BALANCEADO".
+ * Cada linha vira peça ("CODIGO SOLDA") + operação, extraída do "CONCATENAR" (código da peça + operação).
+ * Substitui todas as peças já cadastradas na série.
  *
  * Uso: npx tsx src/scripts/link-pmp-series-from-xlsx.ts <arquivo> [bloco] [serie]
  * Ex.: npx tsx src/scripts/link-pmp-series-from-xlsx.ts "C:/Downloads/00_PMP_MODELO_W46_5DIAS.xlsx" Solda A
@@ -17,6 +17,9 @@ const [
 
 const SHEET_NAME = 'PMP BALANCEADO';
 const PART_CODE_HEADER = 'CODIGO SOLDA';
+const CONCAT_HEADER = 'CONCATENAR';
+
+type SeriesPart = { partCode: string; operation: number };
 
 function normalizeHeader(value: unknown) {
   return String(value ?? '')
@@ -26,7 +29,7 @@ function normalizeHeader(value: unknown) {
     .toUpperCase();
 }
 
-function readPartCodes(): string[] {
+function readParts() {
   const workbook = XLSX.readFile(filePath);
   const sheet = workbook.Sheets[SHEET_NAME];
   if (!sheet) {
@@ -40,22 +43,33 @@ function readPartCodes(): string[] {
   if (headerIndex < 0) {
     throw new Error(`Coluna "${PART_CODE_HEADER}" não encontrada na aba "${SHEET_NAME}".`);
   }
-  const column = rows[headerIndex]!.findIndex(
-    (cell) => normalizeHeader(cell) === PART_CODE_HEADER,
-  );
-
-  const codes = new Set<string>();
-  for (const row of rows.slice(headerIndex + 1)) {
-    const code = String(row[column] ?? '').trim();
-    if (code && code !== '0') codes.add(code);
+  const header = rows[headerIndex]!.map(normalizeHeader);
+  const codeColumn = header.indexOf(PART_CODE_HEADER);
+  const concatColumn = header.indexOf(CONCAT_HEADER);
+  if (concatColumn < 0) {
+    throw new Error(`Coluna "${CONCAT_HEADER}" não encontrada na aba "${SHEET_NAME}".`);
   }
-  return [...codes];
+
+  const parts = new Map<string, SeriesPart>();
+  const invalid: string[] = [];
+  for (const row of rows.slice(headerIndex + 1)) {
+    const partCode = String(row[codeColumn] ?? '').trim().replace(/^0+/, '');
+    const concat = String(row[concatColumn] ?? '').trim();
+    if (!partCode) continue;
+    const operation = concat.startsWith(partCode) ? Number(concat.slice(partCode.length)) : NaN;
+    if (!Number.isInteger(operation) || operation <= 0) {
+      invalid.push(`${partCode} (CONCATENAR "${concat}")`);
+      continue;
+    }
+    parts.set(`${partCode}|${operation}`, { partCode, operation });
+  }
+  return { parts: [...parts.values()], invalid };
 }
 
 async function main() {
-  const partCodes = readPartCodes();
-  if (partCodes.length === 0) {
-    throw new Error('Nenhum código de peça encontrado na planilha.');
+  const { parts, invalid } = readParts();
+  if (parts.length === 0) {
+    throw new Error('Nenhuma peça + operação encontrada na planilha.');
   }
 
   const block = await prisma.pmpBlock.findUnique({
@@ -75,16 +89,17 @@ async function main() {
     });
     await tx.pmpSeriesPart.deleteMany({ where: { pmpSeriesId: series.id } });
     await tx.pmpSeriesPart.createMany({
-      data: partCodes.map((partCode) => ({ pmpSeriesId: series.id, partCode })),
+      data: parts.map((part) => ({ pmpSeriesId: series.id, ...part })),
     });
   });
 
-  const goalsOutside = await prisma.productionWeeklyGoal.count({
-    where: { pmpBlockId: block.id, productCode: { notIn: partCodes } },
-  });
-
-  console.log(`Série "${seriesName}" do bloco "${blockName}": ${partCodes.length} códigos de peça.`);
-  console.log(`Metas semanais já existentes com código fora da série: ${goalsOutside}.`);
+  const partCodes = new Set(parts.map((part) => part.partCode));
+  console.log(
+    `Série "${seriesName}" do bloco "${blockName}": ${parts.length} CONCATENAR (${partCodes.size} peças).`,
+  );
+  if (invalid.length > 0) {
+    console.log(`Linhas ignoradas por CONCATENAR sem operação válida: ${invalid.join(', ')}`);
+  }
 }
 
 main()

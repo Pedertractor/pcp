@@ -23,10 +23,15 @@ export const pmpCostCenterSchema = z.object({
   operations: z.array(pmpCostCenterOperationSchema),
 });
 
+export const pmpSeriesPartSchema = z.object({
+  partCode: z.string(),
+  operation: z.number().int(),
+});
+
 export const pmpSeriesSchema = z.object({
   id: z.string(),
   name: z.string(),
-  partCodes: z.array(z.string()),
+  parts: z.array(pmpSeriesPartSchema),
 });
 
 export const pmpBlockSummarySchema = z.object({
@@ -58,7 +63,14 @@ const pmpCostCenterInputSchema = z.object({
 
 const pmpSeriesInputSchema = z.object({
   name: z.string().trim().min(1, 'Informe o nome da série').max(60),
-  partCodes: z.array(z.string().trim().min(1)).default([]),
+  parts: z
+    .array(
+      z.object({
+        partCode: z.string().trim().min(1),
+        operation: z.number().int().positive('Operação deve ser um número positivo'),
+      }),
+    )
+    .default([]),
 });
 
 export type PmpSeriesInput = z.infer<typeof pmpSeriesInputSchema>;

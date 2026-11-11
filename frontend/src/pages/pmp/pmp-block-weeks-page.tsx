@@ -8,10 +8,11 @@ import {
   ChevronRight,
   Loader2Icon,
   Package,
+  Pencil,
   Plus,
   Target,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -20,6 +21,7 @@ import {
   productionProgressPercent,
 } from '@/components/blocks/produced-planned-progress';
 import { NOTCH_CUT, NotchedPanelShape } from '@/components/notched-panel-shape';
+import { PmpBlockUpsertDialog } from '@/components/pmp/pmp-block-upsert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -36,7 +38,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useWebSession } from '@/hooks/auth/use-web-session';
 import { usePmpBlockThemeImage } from '@/hooks/pmp/use-pmp-block-theme-image';
+import { canAccessUserManagement } from '@/lib/role-access';
 import logoSystem from '@/public/logo-system.png';
 import dashPmpImage from '@/public/pmp/dash-pmp.png';
 import {
@@ -76,6 +80,10 @@ export function PmpBlockWeeksPage() {
   const setWeek = (week: IsoWeek) => {
     setSearchParams({ semana: formatIsoWeekParam(week) }, { replace: true });
   };
+
+  const { data: user } = useWebSession();
+  const canManage = canAccessUserManagement(user?.role);
+  const [editOpen, setEditOpen] = useState(false);
 
   const blockQuery = useQuery({
     queryKey: pmpBlockDetailQueryKey(blockId),
@@ -164,6 +172,25 @@ export function PmpBlockWeeksPage() {
             Selecione a semana para ver a meta de cada peça.
           </p>
         </div>
+        {canManage && blockQuery.data ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0"
+              onClick={() => setEditOpen(true)}
+            >
+              <Pencil className="size-4" />
+              Editar bloco
+            </Button>
+            <PmpBlockUpsertDialog
+              block={blockQuery.data}
+              open={editOpen}
+              onOpenChange={setEditOpen}
+              showTrigger={false}
+            />
+          </>
+        ) : null}
       </header>
 
       <div className="sticky top-0 z-20 -mx-3 flex flex-wrap items-center gap-2 border-b border-border/60 bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-background lg:px-0 lg:pt-0 lg:backdrop-blur-none">

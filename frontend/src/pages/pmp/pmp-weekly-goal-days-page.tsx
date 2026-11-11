@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import {
+  AlertTriangle,
   ArrowLeft,
-  CheckCircle2,
+  Check,
+  Hourglass,
   Loader2Icon,
   MinusCircle,
   PlusCircle,
@@ -25,6 +27,7 @@ import {
   WORKING_DAYS_PER_WEEK,
 } from '@/lib/iso-week';
 import { cn } from '@/lib/utils';
+import logoSystem from '@/public/logo-system.png';
 import {
   getPmpWeeklyGoal,
   pmpWeeklyGoalDetailQueryKey,
@@ -32,10 +35,109 @@ import {
 import type { PmpDailyGoal } from '@/types/pmp-goal';
 
 const piecesFormatter = new Intl.NumberFormat('pt-BR');
+const monthShortFormatter = new Intl.DateTimeFormat('pt-BR', { month: 'short', timeZone: 'UTC' });
 
 function localTodayKey(): string {
   const now = new Date();
   return toDateKey(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())));
+}
+
+type DayTone = 'today' | 'done' | 'late' | 'upcoming' | 'empty';
+
+const tonePanelClass: Record<DayTone, string> = {
+  today: 'bg-zinc-900 text-white',
+  late: 'bg-zinc-700 text-white',
+  done: 'bg-zinc-500 text-white',
+  upcoming: 'bg-zinc-300 text-zinc-900',
+  empty: 'bg-zinc-100 text-zinc-500',
+};
+
+const toneSwatchClass: Record<DayTone, string> = {
+  today: 'bg-zinc-900',
+  late: 'bg-zinc-700',
+  done: 'bg-zinc-500',
+  upcoming: 'bg-zinc-300',
+  empty: 'bg-zinc-100',
+};
+
+const toneDetailClass: Record<DayTone, string> = {
+  today: 'text-foreground',
+  late: 'text-foreground',
+  done: 'text-foreground',
+  upcoming: 'text-foreground',
+  empty: 'text-muted-foreground',
+};
+
+function dayTone(dateKey: string, todayKey: string, day: PmpDailyGoal | null): DayTone {
+  const planned = day?.plannedQuantity ?? 0;
+  if (!day || planned === 0) {
+    return 'empty';
+  }
+  if (day.producedQuantity >= planned) {
+    return 'done';
+  }
+  if (dateKey === todayKey) {
+    return 'today';
+  }
+  return dateKey < todayKey ? 'late' : 'upcoming';
+}
+
+function PmpDayStatusLegend() {
+  return (
+    <div className="flex w-full flex-wrap items-center justify-end gap-x-5 gap-y-2">
+      <LegendTag swatchClassName={toneSwatchClass.today} label="Hoje" />
+      <LegendTag swatchClassName={toneSwatchClass.upcoming} label="Próximo" />
+      <LegendTag swatchClassName={toneSwatchClass.late} label="Atrasado" />
+      <LegendTag swatchClassName={toneSwatchClass.done} label="Meta atingida" />
+      <LegendTag swatchClassName={cn(toneSwatchClass.empty, 'opacity-50')} label="Sem meta" />
+    </div>
+  );
+}
+
+function LegendTag({ label, swatchClassName }: { label: string; swatchClassName: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+      {label}
+      <span
+        className={cn('size-4 shrink-0 rounded-sm border-2 border-foreground/40', swatchClassName)}
+        aria-hidden
+      />
+    </span>
+  );
+}
+
+function DayStatusMark({ tone }: { tone: DayTone }) {
+  if (tone === 'done') {
+    return (
+      <span
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
+        aria-label="Meta atingida"
+        title="Meta atingida"
+      >
+        <Check className="size-4" />
+      </span>
+    );
+  }
+  if (tone === 'late') {
+    return (
+      <span
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
+        aria-label="Meta atrasada"
+        title="Meta atrasada"
+      >
+        <AlertTriangle className="size-4" />
+      </span>
+    );
+  }
+  if (tone === 'today') {
+    return (
+      <Hourglass
+        className="size-5 shrink-0 animate-pulse text-foreground"
+        aria-label="Em produção hoje"
+      />
+    );
+  }
+  return null;
 }
 
 type PmpDayCalendarCellProps = {
@@ -46,68 +148,68 @@ type PmpDayCalendarCellProps = {
 
 function PmpDayCalendarCell({ dateKey, day, todayKey }: PmpDayCalendarCellProps) {
   const isToday = dateKey === todayKey;
-  const isPast = dateKey < todayKey;
   const planned = day?.plannedQuantity ?? 0;
   const produced = day?.producedQuantity ?? 0;
-  const isDone = planned > 0 && produced >= planned;
-  const isLate = isPast && planned > 0 && !isDone;
+  const tone = dayTone(dateKey, todayKey, day);
   const weekday = formatWeekdayKey(dateKey).replace('-feira', '');
+  const dayNumber = dateKey.slice(8, 10);
+  const monthLabel = monthShortFormatter
+    .format(new Date(`${dateKey}T00:00:00.000Z`))
+    .replace('.', '');
 
   return (
     <article
       className={cn(
-        'flex min-h-64 flex-col overflow-hidden rounded-xl border bg-card transition-shadow',
-        isToday && 'border-primary shadow-md ring-1 ring-primary',
-        !day && 'bg-muted/30',
-        isDone && !isToday && 'border-emerald-500/50',
-        isLate && !isToday && 'border-amber-500/50',
+        'relative flex h-full min-h-[19.5rem] flex-col overflow-hidden rounded-2xl bg-background shadow-sm ring-1 ring-border/60',
+        isToday && 'ring-2 ring-zinc-900 dark:ring-zinc-300',
+        tone === 'empty' && 'opacity-50',
       )}
       aria-current={isToday ? 'date' : undefined}
     >
-      <header
+      <div
         className={cn(
-          'flex items-center justify-between gap-2 border-b px-3 py-2',
-          isToday ? 'bg-primary text-primary-foreground' : 'bg-muted/50',
+          'flex min-h-0 flex-1 items-center gap-3 rounded-b-2xl px-3 py-3',
+          tonePanelClass[tone],
         )}
       >
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold capitalize">{weekday}</p>
-          <p
-            className={cn(
-              'text-xs tabular-nums',
-              isToday ? 'text-primary-foreground/80' : 'text-muted-foreground',
-            )}
-          >
+        <div className="flex size-11 shrink-0 flex-col items-center justify-center rounded-xl bg-background leading-none text-foreground ring-1 ring-white/40">
+          <span className="text-base font-bold tabular-nums">{dayNumber}</span>
+          <span className="text-[10px] font-medium uppercase text-muted-foreground">
+            {monthLabel}
+          </span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold tracking-wide uppercase opacity-75">
+            {isToday ? 'Hoje' : 'Dia'}
+          </p>
+          <p className="truncate text-sm font-semibold capitalize leading-snug">{weekday}</p>
+          <p className="truncate text-xs tabular-nums opacity-85">
             {formatShortDateKey(dateKey)}
           </p>
         </div>
-        {isToday ? (
-          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-            Hoje
-          </Badge>
-        ) : isDone ? (
-          <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" aria-label="Meta atingida" />
-        ) : null}
-      </header>
+      </div>
 
       {day ? (
-        <div className="flex flex-1 flex-col gap-3 p-3">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Meta do dia
-            </p>
-            <p className="text-2xl font-bold tabular-nums">
-              {piecesFormatter.format(planned)}
-              <span className="ml-1 text-sm font-medium text-muted-foreground">pç</span>
-            </p>
+        <div className={cn('flex shrink-0 flex-col gap-3 px-3 pt-3 pb-4', toneDetailClass[tone])}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold tracking-wide uppercase opacity-70">
+                Meta do dia
+              </p>
+              <p className="text-2xl font-bold tabular-nums">
+                {piecesFormatter.format(planned)}
+                <span className="ml-1 text-sm font-medium opacity-70">pç</span>
+              </p>
+            </div>
+            <DayStatusMark tone={tone} />
           </div>
 
           <div className="space-y-1.5">
             <div className="flex items-baseline justify-between gap-2 text-xs">
-              <span className="text-muted-foreground">Produzido</span>
+              <span className="opacity-70">Produzido</span>
               <span className="font-semibold tabular-nums">
                 {piecesFormatter.format(produced)}
-                <span className="ml-1 font-normal text-muted-foreground">
+                <span className="ml-1 font-normal opacity-70">
                   ({productionProgressPercent(produced, planned)}%)
                 </span>
               </span>
@@ -158,12 +260,12 @@ function PmpDayCalendarCell({ dateKey, day, todayKey }: PmpDayCalendarCellProps)
             </div>
           </div>
 
-          <div className="mt-auto border-t pt-2">
-            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="mt-auto border-t border-current/10 pt-2">
+            <p className="mb-1 text-[11px] font-semibold tracking-wide uppercase opacity-70">
               OFs
             </p>
             {day.orders.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhuma OF alocada</p>
+              <p className="text-xs opacity-80">Nenhuma OF alocada</p>
             ) : (
               <div className="flex flex-wrap gap-1">
                 {day.orders.map((order) => (
@@ -182,8 +284,11 @@ function PmpDayCalendarCell({ dateKey, day, todayKey }: PmpDayCalendarCellProps)
           </div>
         </div>
       ) : (
-        <div className="flex flex-1 items-center justify-center p-3 text-xs text-muted-foreground">
-          Sem meta
+        <div className="shrink-0 px-3 pt-3 pb-4 text-muted-foreground">
+          <p className="text-[11px] font-semibold tracking-wide uppercase opacity-70">
+            Meta do dia
+          </p>
+          <p className="text-sm font-semibold">Sem meta</p>
         </div>
       )}
     </article>
@@ -245,6 +350,11 @@ export function PmpWeeklyGoalDaysPage() {
             </p>
           ) : null}
         </div>
+        <img
+          src={logoSystem}
+          alt="Logo do sistema"
+          className="size-12 shrink-0 object-contain dark:brightness-0 dark:invert"
+        />
       </header>
 
       {goalQuery.isPending ? (
@@ -329,15 +439,18 @@ export function PmpWeeklyGoalDaysPage() {
               Meta semanal ainda não distribuída por dia.
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
-              {weekDayKeys.map((dateKey) => (
-                <PmpDayCalendarCell
-                  key={dateKey}
-                  dateKey={dateKey}
-                  day={dailyGoalByDate.get(dateKey) ?? null}
-                  todayKey={todayKey}
-                />
-              ))}
+            <div className="flex flex-col gap-4">
+              <PmpDayStatusLegend />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+                {weekDayKeys.map((dateKey) => (
+                  <PmpDayCalendarCell
+                    key={dateKey}
+                    dateKey={dateKey}
+                    day={dailyGoalByDate.get(dateKey) ?? null}
+                    todayKey={todayKey}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </>

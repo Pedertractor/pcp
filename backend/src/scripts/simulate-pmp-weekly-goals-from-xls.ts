@@ -1,24 +1,25 @@
 /**
- * Simulação do PMP balanceado a partir da planilha de necessidades (DIA01..DIA31 + ATRASO).
+ * Simulação do PMP balanceado a partir da aba "extract_relatorio" (DIA01..DIA31 + ATRASO).
  *
+ * Considera as linhas cujo CONCATENAR (código da peça + operação) está em alguma série do bloco.
+ * A meta vai para o CCUSTO + OPERACAO da própria linha, que precisa estar cadastrado no bloco.
  * Meta semanal da peça = ATRASO + soma(DIA01..DIA<ultimo-dia>), fracionada de segunda a sexta.
- * Considera só as linhas cujo par CCUSTO + OPERACAO está cadastrado no bloco
- * e cujo PRODUTO pertence a alguma série do bloco.
  * Apaga todas as metas existentes do bloco antes de importar.
  *
  * Uso: npx tsx src/scripts/simulate-pmp-weekly-goals-from-xls.ts <arquivo> [bloco] [inicio-semana] [ultimo-dia]
- * Ex.: npx tsx src/scripts/simulate-pmp-weekly-goals-from-xls.ts "C:/Downloads/plan.xls" Solda 2026-11-09 13
+ * Ex.: npx tsx src/scripts/simulate-pmp-weekly-goals-from-xls.ts "C:/Downloads/00_PMP_MODELO_W46_5DIAS.xlsx" Solda 2026-11-09 13
  */
 import XLSX from 'xlsx';
 import { prisma } from '../config/prisma.js';
 
 const [
-  filePath = 'c:/Users/vanderlei.junior/Downloads/01_2010 a 13_113.xls',
+  filePath = 'C:/Users/vanderlei.junior/Downloads/00_PMP_MODELO_W46_5DIAS.xlsx',
   blockName = 'Solda',
   weekStartKey = '2026-11-09',
   lastDayArg = '13',
 ] = process.argv.slice(2);
 
+const SHEET_NAME = 'extract_relatorio';
 const WORKING_DAYS = 5;
 
 type SheetRow = Record<string, unknown>;
@@ -51,6 +52,25 @@ function splitEvenly(total: number, parts: number): number[] {
   return Array.from({ length: parts }, (_, index) => base + (index < remainder ? 1 : 0));
 }
 
+function readExtractRows(): SheetRow[] {
+  const workbook = XLSX.readFile(filePath);
+  const sheet = workbook.Sheets[SHEET_NAME];
+  if (!sheet) {
+    throw new Error(`Aba "${SHEET_NAME}" não encontrada em ${filePath}.`);
+  }
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: 0 });
+  const headerIndex = matrix.findIndex((row) =>
+    row.some((cell) => String(cell).trim().toUpperCase() === 'CONCATENAR'),
+  );
+  if (headerIndex < 0) {
+    throw new Error(`Coluna "CONCATENAR" não encontrada na aba "${SHEET_NAME}".`);
+  }
+  const header = matrix[headerIndex]!.map((cell) => String(cell).trim().toUpperCase());
+  return matrix
+    .slice(headerIndex + 1)
+    .map((row) => Object.fromEntries(header.map((name, index) => [name, row[index]])));
+}
+
 async function main() {
   const lastDay = Number(lastDayArg);
   if (!Number.isInteger(lastDay) || lastDay < 1 || lastDay > 31) {
@@ -71,18 +91,20 @@ async function main() {
           operations: { select: { id: true, operation: true } },
         },
       },
-      series: { select: { parts: { select: { partCode: true } } } },
+      series: { select: { parts: { select: { partCode: true, operation: true } } } },
     },
   });
   if (!block) {
     throw new Error(`Bloco PMP "${blockName}" não encontrado.`);
   }
 
-  const allowedPartCodes = new Set(
-    block.series.flatMap((series) => series.parts.map((part) => part.partCode)),
+  const seriesConcats = new Set(
+    block.series.flatMap((series) =>
+      series.parts.map((part) => `${part.partCode}${part.operation}`),
+    ),
   );
-  if (allowedPartCodes.size === 0) {
-    throw new Error(`Bloco PMP "${blockName}" não tem séries com códigos de peça vinculados.`);
+  if (seriesConcats.size === 0) {
+    throw new Error(`Bloco PMP "${blockName}" não tem séries com peças vinculadas.`);
   }
 
   const operationIdByKey = new Map<string, string>();
@@ -92,26 +114,23 @@ async function main() {
     }
   }
 
-  const workbook = XLSX.readFile(filePath);
-  const sheet = workbook.Sheets[workbook.SheetNames[0]!]!;
-  const rows = XLSX.utils.sheet_to_json<SheetRow>(sheet, { defval: 0 });
-
+  const rows = readExtractRows();
   const drafts = new Map<string, GoalDraft>();
-  let matchedRows = 0;
-  let outsideSeriesRows = 0;
+  const foundConcats = new Set<string>();
+  const outsideBlock = new Set<string>();
   for (const row of rows) {
-    const costCenter = stripLeadingZeros(String(row.CCUSTO ?? ''));
-    const operation = Math.trunc(toNumber(row.OPERACAO));
-    const operationId = operationIdByKey.get(`${costCenter}|${operation}`);
-    if (!operationId) continue;
-
     const productCode = stripLeadingZeros(String(row.PRODUTO ?? ''));
-    if (!productCode) continue;
-    if (!allowedPartCodes.has(productCode)) {
-      outsideSeriesRows += 1;
+    const operation = Math.trunc(toNumber(row.OPERACAO));
+    const concat = `${productCode}${operation}`;
+    if (!productCode || !seriesConcats.has(concat)) continue;
+    foundConcats.add(concat);
+
+    const costCenter = stripLeadingZeros(String(row.CCUSTO ?? ''));
+    const operationId = operationIdByKey.get(`${costCenter}|${operation}`);
+    if (!operationId) {
+      outsideBlock.add(`${concat} (CC ${costCenter} OP ${operation})`);
       continue;
     }
-    matchedRows += 1;
 
     const quantity = Math.round(
       toNumber(row.ATRASO) + dayColumns.reduce((total, column) => total + toNumber(row[column]), 0),
@@ -126,7 +145,7 @@ async function main() {
       const description = String(row.DESCRICAO ?? '').trim();
       drafts.set(key, {
         productCode,
-        productName: description || null,
+        productName: description && description !== '0' ? description : null,
         operationId,
         quantity,
       });
@@ -175,13 +194,20 @@ async function main() {
     { timeout: 120_000 },
   );
 
+  const missing = [...seriesConcats].filter((concat) => !foundConcats.has(concat));
   const totalPieces = [...drafts.values()].reduce((total, draft) => total + draft.quantity, 0);
   console.log(
-    `Planilha: ${rows.length} linhas; ${matchedRows} com CC/operação e peça das séries do bloco "${blockName}"; ${outsideSeriesRows} ignoradas por peça fora das séries.`,
+    `extract_relatorio: ${rows.length} linhas; ${foundConcats.size} de ${seriesConcats.size} CONCATENAR da série encontrados.`,
   );
   console.log(
     `Semana ${weekStartKey}: ${drafts.size} metas semanais, ${totalPieces} peças (ATRASO + ${dayColumns[0]}..${dayColumns.at(-1)}), fracionadas em ${WORKING_DAYS} dias.`,
   );
+  if (outsideBlock.size > 0) {
+    console.log(`Sem CC/operação no bloco: ${[...outsideBlock].join(', ')}`);
+  }
+  if (missing.length > 0) {
+    console.log(`CONCATENAR da série ausentes no extract_relatorio: ${missing.join(', ')}`);
+  }
 }
 
 main()

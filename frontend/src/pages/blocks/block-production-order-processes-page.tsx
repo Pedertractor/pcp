@@ -155,7 +155,7 @@ export function BlockProductionOrderProcessesPage() {
         ) : null}
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] lg:items-stretch">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:items-stretch">
         <Card className="overflow-hidden border-border/60">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Imagem da peça</CardTitle>
@@ -172,8 +172,7 @@ export function BlockProductionOrderProcessesPage() {
               <div className="flex min-h-[12rem] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/80 bg-muted/40 p-4 text-center">
                 <ImageIcon className="size-10 text-muted-foreground" aria-hidden />
                 <p className="text-xs leading-snug text-muted-foreground">
-                  A imagem só é buscada quando você solicitar, para não sobrecarregar a
-                  integração.
+                 Clique para visualizar a imagem da peça.
                 </p>
                 <Button
                   type="button"

@@ -28,7 +28,7 @@ const pmpBlockInclude = {
   series: {
     orderBy: { name: 'asc' as const },
     include: {
-      parts: { orderBy: { partCode: 'asc' as const } },
+      parts: true,
     },
   },
 } as const;
@@ -57,12 +57,22 @@ type PmpBlockWithRelations = {
   series: Array<{
     id: string;
     name: string;
-    parts: Array<{ partCode: string }>;
+    parts: Array<{ partCode: string; operation: number }>;
   }>;
 };
 
+type SeriesPart = { partCode: string; operation: number };
+
 function dedupeOperations(operations: number[]): number[] {
   return [...new Set(operations)].sort((a, b) => a - b);
+}
+
+function sortSeriesParts<T extends SeriesPart>(parts: T[]): T[] {
+  return [...parts].sort(
+    (a, b) =>
+      a.partCode.localeCompare(b.partCode, 'pt-BR', { numeric: true }) ||
+      a.operation - b.operation,
+  );
 }
 
 /** Códigos de peça são gravados sem zeros à esquerda, como no import das metas semanais. */
@@ -75,14 +85,14 @@ function normalizeSeries(inputs: PmpSeriesInput[]) {
       throw new AppError(`Série "${name}" repetida na lista.`, 400);
     }
     names.add(key);
-    const partCodes = [
-      ...new Set(
-        item.partCodes
-          .map((code) => code.trim().replace(/^0+/, ''))
-          .filter(Boolean),
-      ),
-    ].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
-    return { name, partCodes };
+    const partsByKey = new Map<string, SeriesPart>();
+    for (const part of item.parts) {
+      const partCode = part.partCode.trim().replace(/^0+/, '');
+      if (partCode) {
+        partsByKey.set(`${partCode}|${part.operation}`, { partCode, operation: part.operation });
+      }
+    }
+    return { name, parts: sortSeriesParts([...partsByKey.values()]) };
   });
 }
 
@@ -114,9 +124,9 @@ function toPmpBlockSummary(block: PmpBlockWithRelations): PmpBlockSummary {
     series: block.series.map((series) => ({
       id: series.id,
       name: series.name,
-      partCodes: series.parts
-        .map((part) => part.partCode)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })),
+      parts: sortSeriesParts(
+        series.parts.map((part) => ({ partCode: part.partCode, operation: part.operation })),
+      ),
     })),
     createdAt: block.createdAt.toISOString(),
     updatedAt: block.updatedAt.toISOString(),
@@ -175,7 +185,7 @@ export class PmpBlockService {
           create: series.map((item) => ({
             name: item.name,
             parts: {
-              create: item.partCodes.map((partCode) => ({ partCode })),
+              create: item.parts,
             },
           })),
         },
@@ -322,12 +332,9 @@ export class PmpBlockService {
             select: { id: true },
           });
           await tx.pmpSeriesPart.deleteMany({ where: { pmpSeriesId: saved.id } });
-          if (item.partCodes.length > 0) {
+          if (item.parts.length > 0) {
             await tx.pmpSeriesPart.createMany({
-              data: item.partCodes.map((partCode) => ({
-                pmpSeriesId: saved.id,
-                partCode,
-              })),
+              data: item.parts.map((part) => ({ pmpSeriesId: saved.id, ...part })),
             });
           }
         }

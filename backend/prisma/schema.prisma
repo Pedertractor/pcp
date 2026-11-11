@@ -327,16 +327,17 @@ model PmpSeries {
   @@map("pmp_series")
 }
 
-/// Código de peça (coluna "CODIGO SOLDA" / PRODUTO da planilha) pertencente a uma série.
+/// Peça + operação de uma série; juntos formam o CONCATENAR da planilha (ex.: 248868 + 30 = 24886830).
 model PmpSeriesPart {
   id          String   @id @default(uuid())
   pmpSeriesId String   @map("pmp_series_id")
   partCode    String   @map("part_code")
+  operation   Int
   createdAt   DateTime @default(now()) @map("created_at")
 
   pmpSeries PmpSeries @relation(fields: [pmpSeriesId], references: [id], onDelete: Cascade)
 
-  @@unique([pmpSeriesId, partCode])
+  @@unique([pmpSeriesId, partCode, operation])
   @@index([partCode])
   @@map("pmp_series_parts")
 }

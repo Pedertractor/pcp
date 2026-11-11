@@ -1,10 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Boxes, ImageUp, Layers, Loader2Icon, Plus, Receipt } from 'lucide-react';
+import {
+  Boxes,
+  ImageUp,
+  Layers,
+  Loader2Icon,
+  Plus,
+  Receipt,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { SectorPicker } from '@/components/blocks/sector-picker';
-import { PmpCostCenterOperationsEditor } from '@/components/pmp/pmp-cost-center-operations-editor';
+import { PmpCostCenterOperationsTable } from '@/components/pmp/pmp-cost-center-operations-editor';
 import {
   PmpSeriesEditor,
   toSeriesDrafts,
@@ -27,6 +34,7 @@ import { Label } from '@/components/ui/label';
 import { useWebSession } from '@/hooks/auth/use-web-session';
 import { usePmpBlockThemeImage } from '@/hooks/pmp/use-pmp-block-theme-image';
 import { canAccessUserManagement } from '@/lib/role-access';
+import { cn } from '@/lib/utils';
 import {
   createPmpBlockFormSchema,
   type CreatePmpBlockFormValues,
@@ -44,6 +52,14 @@ import {
 } from '@/services/sectors/sector.service';
 import type { PmpBlockSummary } from '@/types/pmp-block';
 import type { SectorOption } from '@/types/sector';
+
+type UpsertStep = 'general' | 'costCenters' | 'series';
+
+const STEPS: Array<{ id: UpsertStep; title: string; icon: typeof Boxes }> = [
+  { id: 'general', title: 'Nome e imagem temática', icon: Boxes },
+  { id: 'costCenters', title: 'Centros de custo', icon: Receipt },
+  { id: 'series', title: 'Peças de série', icon: Layers },
+];
 
 function buildOperationsMap(block: PmpBlockSummary): Record<string, number[]> {
   return Object.fromEntries(
@@ -77,8 +93,8 @@ export function PmpBlockUpsertDialog({
   const setOpen = controlledOnOpenChange ?? setInternalOpen;
 
   const [name, setName] = useState(block?.name ?? '');
-  const [sectorIds, setSectorIds] = useState<string[]>(() =>
-    block?.costCenters.map((cc) => cc.sectorIdApi) ?? [],
+  const [sectorIds, setSectorIds] = useState<string[]>(
+    () => block?.costCenters.map((cc) => cc.sectorIdApi) ?? [],
   );
   const [operationsBySector, setOperationsBySector] = useState<
     Record<string, number[]>
@@ -87,6 +103,8 @@ export function PmpBlockUpsertDialog({
     toSeriesDrafts(block?.series ?? []),
   );
   const [formError, setFormError] = useState<string | null>(null);
+  const [errorStep, setErrorStep] = useState<UpsertStep | null>(null);
+  const [step, setStep] = useState<UpsertStep>('general');
   const [themeFile, setThemeFile] = useState<File | null>(null);
 
   const themePreview = usePmpBlockThemeImage(block?.themeImage ?? null);
@@ -108,6 +126,8 @@ export function PmpBlockUpsertDialog({
       setThemeFile(null);
     }
     setFormError(null);
+    setErrorStep(null);
+    setStep('general');
   }, [open, block]);
 
   const sectorsQuery = useQuery({
@@ -140,9 +160,7 @@ export function PmpBlockUpsertDialog({
               normalizedName: '',
               operationId: null,
               linkedBlock: null,
-              linkedPmpBlock: block
-                ? { id: block.id, name: block.name }
-                : null,
+              linkedPmpBlock: block ? { id: block.id, name: block.name } : null,
             }
           : undefined;
       })
@@ -164,8 +182,7 @@ export function PmpBlockUpsertDialog({
     setOperationsBySector((prev) => ({
       ...prev,
       [id]:
-        prev[id] ??
-        (sector?.operationId != null ? [sector.operationId] : []),
+        prev[id] ?? (sector?.operationId != null ? [sector.operationId] : []),
     }));
   }
 
@@ -184,7 +201,11 @@ export function PmpBlockUpsertDialog({
           series,
         });
       } else {
-        saved = await createPmpBlock({ name: values.name, costCenters, series });
+        saved = await createPmpBlock({
+          name: values.name,
+          costCenters,
+          series,
+        });
       }
       if (themeFile) {
         try {
@@ -200,6 +221,7 @@ export function PmpBlockUpsertDialog({
     },
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({ queryKey: pmpBlocksListQueryKey });
+      // Prefixo cobre detalhe, semanas, metas semanais e metas diárias do bloco.
       await queryClient.invalidateQueries({
         queryKey: pmpBlockDetailQueryKey(saved.id),
       });
@@ -212,25 +234,91 @@ export function PmpBlockUpsertDialog({
     },
   });
 
+  function validateStep(target: UpsertStep): string | null {
+    if (target === 'general') {
+      return name.trim() ? null : 'Informe o nome do bloco.';
+    }
+    if (target === 'costCenters') {
+      return sectorIds.length > 0
+        ? null
+        : 'Selecione ao menos um centro de custo.';
+    }
+    if (seriesDrafts.length === 0) {
+      return 'Cadastre a série e as peças + operações (CONCATENAR) que o PMP balanceado vai considerar.';
+    }
+    const seriesNames = seriesDrafts.map((item) =>
+      item.name.trim().toLocaleUpperCase('pt-BR'),
+    );
+    if (seriesNames.some((item) => !item)) {
+      return 'Informe o nome de todas as séries.';
+    }
+    if (new Set(seriesNames).size !== seriesNames.length) {
+      return 'Há séries com o mesmo nome.';
+    }
+    const emptySeries = seriesDrafts.find(
+      (item) => item.parts.length === 0,
+    );
+    if (emptySeries) {
+      return `Informe ao menos uma peça + operação na série "${emptySeries.name.trim()}".`;
+    }
+    return null;
+  }
+
+  function showStepError(target: UpsertStep, message: string) {
+    setStep(target);
+    setErrorStep(target);
+    setFormError(message);
+  }
+
+  function goToNextStep() {
+    const message = validateStep(step);
+    if (message) {
+      showStepError(step, message);
+      return;
+    }
+    setFormError(null);
+    setErrorStep(null);
+    const index = STEPS.findIndex((item) => item.id === step);
+    setStep(STEPS[Math.min(index + 1, STEPS.length - 1)]!.id);
+  }
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!isEdit && !isLastStep) {
+      goToNextStep();
+      return;
+    }
+    for (const item of STEPS) {
+      const message = validateStep(item.id);
+      if (message) {
+        showStepError(item.id, message);
+        return;
+      }
+    }
     const parsed = createPmpBlockFormSchema.safeParse({ name, sectorIds });
     if (!parsed.success) {
       setFormError(parsed.error.issues[0]?.message ?? 'Dados inválidos');
       return;
     }
-    const seriesNames = seriesDrafts.map((item) => item.name.trim().toLocaleUpperCase('pt-BR'));
-    if (seriesNames.some((item) => !item)) {
-      setFormError('Informe o nome de todas as séries.');
-      return;
-    }
-    if (new Set(seriesNames).size !== seriesNames.length) {
-      setFormError('Há séries com o mesmo nome.');
-      return;
-    }
     setFormError(null);
+    setErrorStep(null);
     mutation.mutate(parsed.data);
   }
+
+  const operationsCount = sectorIds.reduce(
+    (total, id) => total + (operationsBySector[id]?.length ?? 0),
+    0,
+  );
+  const partCodesCount = seriesDrafts.reduce(
+    (total, item) => total + item.parts.length,
+    0,
+  );
+  const stepSummary: Record<UpsertStep, string> = {
+    general: name.trim() || 'Sem nome',
+    costCenters: `${sectorIds.length} CC · ${operationsCount} ${operationsCount === 1 ? 'operação' : 'operações'}`,
+    series: `${seriesDrafts.length} ${seriesDrafts.length === 1 ? 'série' : 'séries'} · ${partCodesCount} ${partCodesCount === 1 ? 'peça' : 'peças'}`,
+  };
+  const isLastStep = step === STEPS[STEPS.length - 1]!.id;
 
   if (isSessionPending || !canManage) {
     return null;
@@ -248,95 +336,170 @@ export function PmpBlockUpsertDialog({
       ) : null}
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-y-auto px-6 py-8 sm:max-w-[min(72rem,calc(100vw-4rem))] sm:px-8">
         <DialogHeader className="pr-8">
-          <DialogTitle>{isEdit ? 'Editar bloco PMP' : 'Novo bloco PMP'}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? 'Editar bloco PMP' : 'Novo bloco PMP'}
+          </DialogTitle>
           <DialogDescription>
-            Vincule centros de custo da API base e defina as operações de cada um.
+            Defina o bloco, os centros de custo com suas operações e as peças de
+            série que o PMP balanceado vai considerar.
           </DialogDescription>
         </DialogHeader>
 
+        <nav
+          className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+          aria-label="Etapas do bloco PMP"
+        >
+          {STEPS.map((item, index) => {
+            const Icon = item.icon;
+            const active = item.id === step;
+            const hasError = errorStep === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setStep(item.id)}
+                aria-current={active ? 'step' : undefined}
+                className={cn(
+                  'flex items-center gap-3 rounded-xl border p-3 text-left transition-colors',
+                  active
+                    ? 'border-foreground bg-muted'
+                    : 'border-border/60 hover:bg-muted/50',
+                  hasError && 'border-destructive',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+                    active
+                      ? 'bg-foreground text-background'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {index + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5 text-sm font-medium">
+                    <Icon
+                      className="size-4 shrink-0 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <span className="truncate">{item.title}</span>
+                  </span>
+                  <span
+                    className={cn(
+                      'block truncate text-xs',
+                      hasError ? 'text-destructive' : 'text-muted-foreground',
+                    )}
+                  >
+                    {stepSummary[item.id]}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
         <form className="flex flex-col gap-6 py-2" onSubmit={handleSubmit}>
-          <div className="grid gap-3">
-            <Label htmlFor="pmp-block-name" className="flex items-center gap-2">
-              <Boxes className="size-4 text-muted-foreground" />
-              Nome
-            </Label>
-            <Input
-              id="pmp-block-name"
-              autoComplete="off"
-              placeholder="Ex.: Pintura — programa semanal"
-              className="h-10"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </div>
-
-          <div className="grid gap-3">
-            <Label className="flex items-center gap-2">
-              <ImageUp className="size-4 text-muted-foreground" />
-              Imagem temática do bloco
-            </Label>
-            <PmpThemeImageDropzone
-              file={themeFile}
-              onFileChange={setThemeFile}
-              currentSrc={themeFile ? null : themePreview.src}
-              currentLoading={!themeFile && themePreview.isLoading}
-              alt={name.trim() || 'Imagem temática do bloco PMP'}
-            />
-          </div>
-
-          <div className="grid min-h-0 gap-3">
-            <Label className="flex items-center gap-2">
-              <Receipt className="size-4 text-muted-foreground" />
-              Centros de custo
-            </Label>
-            <SectorPicker
-              sectors={sectors}
-              selectedIds={sectorIds}
-              selectedSectors={selectedSectors}
-              loading={sectorsQuery.isLoading}
-              error={
-                sectorsQuery.isError
-                  ? (sectorsQuery.error?.message ?? 'Erro ao carregar setores')
-                  : null
-              }
-              currentBlockId={block?.id}
-              linkedField="linkedPmpBlock"
-              listClassName="max-h-48"
-              onToggle={toggleSector}
-              onRetry={() => void sectorsQuery.refetch()}
-            />
-          </div>
-
-          {selectedSectors.length > 0 ? (
-            <div className="space-y-3">
-              <p className="text-sm font-medium">Operações por centro de custo</p>
-              {selectedSectors.map((sector) => (
-                <PmpCostCenterOperationsEditor
-                  key={sector.id}
-                  costCenter={sector.costCenter}
-                  sectorName={sector.name}
-                  operations={operationsBySector[sector.id] ?? []}
-                  onChange={(next) =>
-                    setOperationsBySector((prev) => ({
-                      ...prev,
-                      [sector.id]: next,
-                    }))
-                  }
+          {step === 'general' ? (
+            <>
+              <div className="grid gap-3">
+                <Label
+                  htmlFor="pmp-block-name"
+                  className="flex items-center gap-2"
+                >
+                  <Boxes className="size-4 text-muted-foreground" />
+                  Nome
+                </Label>
+                <Input
+                  id="pmp-block-name"
+                  autoComplete="off"
+                  placeholder="Ex.: Pintura — programa semanal"
+                  className="h-10"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
                 />
-              ))}
-            </div>
+              </div>
+
+              <div className="grid gap-3">
+                <Label className="flex items-center gap-2">
+                  <ImageUp className="size-4 text-muted-foreground" />
+                  Imagem temática do bloco
+                </Label>
+                <PmpThemeImageDropzone
+                  file={themeFile}
+                  onFileChange={setThemeFile}
+                  currentSrc={themeFile ? null : themePreview.src}
+                  currentLoading={!themeFile && themePreview.isLoading}
+                  alt={name.trim() || 'Imagem temática do bloco PMP'}
+                />
+              </div>
+            </>
           ) : null}
 
-          <div className="grid gap-3">
-            <Label className="flex items-center gap-2">
-              <Layers className="size-4 text-muted-foreground" />
-              Séries de peças
-            </Label>
-            <p className="-mt-1 text-xs text-muted-foreground">
-              O bloco só aceita metas de peças cujo código está em alguma série.
-            </p>
-            <PmpSeriesEditor value={seriesDrafts} onChange={setSeriesDrafts} />
-          </div>
+          {step === 'costCenters' ? (
+            <>
+              <div className="grid min-h-0 gap-3">
+                <Label className="flex items-center gap-2">
+                  <Receipt className="size-4 text-muted-foreground" />
+                  Centros de custo
+                </Label>
+                <SectorPicker
+                  sectors={sectors}
+                  selectedIds={sectorIds}
+                  selectedSectors={selectedSectors}
+                  loading={sectorsQuery.isLoading}
+                  error={
+                    sectorsQuery.isError
+                      ? (sectorsQuery.error?.message ??
+                        'Erro ao carregar setores')
+                      : null
+                  }
+                  currentBlockId={block?.id}
+                  linkedField="linkedPmpBlock"
+                  listClassName="max-h-48"
+                  onToggle={toggleSector}
+                  onRetry={() => void sectorsQuery.refetch()}
+                />
+              </div>
+
+              {selectedSectors.length > 0 ? (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium">
+                    Operações por centro de custo
+                  </p>
+                  <PmpCostCenterOperationsTable
+                    items={selectedSectors.map((sector) => ({
+                      id: sector.id,
+                      costCenter: sector.costCenter,
+                      sectorName: sector.name,
+                    }))}
+                    operationsById={operationsBySector}
+                    onChange={(id, next) =>
+                      setOperationsBySector((prev) => ({ ...prev, [id]: next }))
+                    }
+                  />
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {step === 'series' ? (
+            <div className="grid gap-3">
+              <Label className="flex items-center gap-2">
+                <Layers className="size-4 text-muted-foreground" />
+                Peças de série
+              </Label>
+              <p className="-mt-1 text-xs text-muted-foreground">
+                Informe a série e as peças com a operação de cada uma (o
+                CONCATENAR da planilha: código da peça + operação). O bloco só
+                aceita metas desses CONCATENAR.
+              </p>
+              <PmpSeriesEditor
+                value={seriesDrafts}
+                onChange={setSeriesDrafts}
+              />
+            </div>
+          ) : null}
 
           {formError ? (
             <p className="text-sm text-destructive">{formError}</p>
@@ -351,12 +514,18 @@ export function PmpBlockUpsertDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? (
-                <Loader2Icon className="size-4 animate-spin" />
-              ) : null}
-              {isEdit ? 'Salvar' : 'Criar bloco'}
-            </Button>
+            {!isEdit && !isLastStep ? (
+              <Button type="button" onClick={goToNextStep}>
+                Próximo
+              </Button>
+            ) : (
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : null}
+                {isEdit ? 'Salvar' : 'Criar bloco'}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

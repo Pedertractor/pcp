@@ -28,10 +28,15 @@ export type PmpCostCenter = {
   operations: PmpCostCenterOperation[];
 };
 
+export type PmpSeriesPart = {
+  partCode: string;
+  operation: number;
+};
+
 export type PmpSeries = {
   id: string;
   name: string;
-  partCodes: string[];
+  parts: PmpSeriesPart[];
 };
 
 export type PmpBlockSummary = {
@@ -51,7 +56,7 @@ export type PmpCostCenterInput = {
 
 export type PmpSeriesInput = {
   name: string;
-  partCodes: string[];
+  parts: PmpSeriesPart[];
 };
 
 export type CreatePmpBlockInput = {
