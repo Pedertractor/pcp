@@ -5,13 +5,17 @@ import {
   CalendarPlus,
   CalendarX,
   Check,
+  CircleCheck,
   Clock,
   Eye,
+  Factory,
   Hourglass,
   Loader2Icon,
   MinusCircle,
+  Package,
   PlusCircle,
   Target,
+  Workflow,
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -24,6 +28,8 @@ import {
   ProducedPlannedProgressBar,
   productionProgressPercent,
 } from '@/components/blocks/produced-planned-progress';
+import { NOTCH_CUT, NotchedPanelShape } from '@/components/notched-panel-shape';
+import { PmpAttainmentGauge } from '@/components/pmp/pmp-attainment-gauge';
 import { PmpExtraDayDialog } from '@/components/pmp/pmp-extra-day-dialog';
 import { PmpPartDetailsDialog } from '@/components/pmp/pmp-part-details-dialog';
 import { Badge } from '@/components/ui/badge';
@@ -43,7 +49,9 @@ import logoSystem from '@/public/logo-system.png';
 import {
   closePmpExtraDay,
   getPmpWeeklyGoal,
+  getPmpWeeklyGoalPartPreview,
   pmpWeeklyGoalDetailQueryKey,
+  pmpWeeklyGoalPartPreviewQueryKey,
 } from '@/services/pmp/pmp-goal.service';
 import type { PmpDailyGoal } from '@/types/pmp-goal';
 
@@ -58,11 +66,9 @@ const goalCardEnter = cn(
   goalPageEnter,
   'motion-safe:slide-in-from-bottom-3 motion-safe:zoom-in-[0.98]',
 );
-const SUMMARY_CARD_DELAYS = [
-  'motion-safe:delay-75',
-  'motion-safe:delay-150',
-  'motion-safe:delay-200',
-] as const;
+const goalInfoRowEnter = cn(
+  'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both motion-reduce:animate-none',
+);
 const DAY_CARD_BASE_DELAY_MS = 250;
 const DAY_CARD_STAGGER_MS = 70;
 
@@ -74,7 +80,7 @@ function localTodayKey(): string {
 type DayTone = 'today' | 'done' | 'late' | 'upcoming' | 'empty';
 
 const toneCellClass: Record<DayTone, string> = {
-  today: 'bg-white text-zinc-950 dark:bg-zinc-50',
+  today: 'bg-white text-zinc-950 dark:bg-card dark:text-foreground',
   late: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800/60 dark:text-zinc-400',
   done: 'bg-emerald-50 dark:bg-emerald-500/10',
   upcoming: 'bg-muted/30',
@@ -82,7 +88,7 @@ const toneCellClass: Record<DayTone, string> = {
 };
 
 const toneStripClass: Record<DayTone, string> = {
-  today: 'bg-zinc-900 dark:bg-zinc-300',
+  today: 'bg-zinc-900 dark:bg-white',
   late: 'bg-zinc-300 dark:bg-zinc-600',
   done: 'bg-emerald-500',
   upcoming: 'bg-border',
@@ -90,7 +96,7 @@ const toneStripClass: Record<DayTone, string> = {
 };
 
 const toneFillClass: Record<DayTone, string> = {
-  today: 'bg-zinc-900',
+  today: 'bg-zinc-900 dark:bg-white',
   late: 'bg-zinc-400',
   done: 'bg-emerald-500',
   upcoming: 'bg-muted-foreground/50',
@@ -98,7 +104,7 @@ const toneFillClass: Record<DayTone, string> = {
 };
 
 const toneGoalClass: Record<DayTone, string> = {
-  today: 'text-zinc-950',
+  today: 'text-zinc-950 dark:text-white',
   late: 'text-zinc-500 dark:text-zinc-400',
   done: 'text-emerald-700 dark:text-emerald-300',
   upcoming: 'text-foreground',
@@ -136,21 +142,6 @@ const toneStatus: Record<
 };
 
 const LEGEND_TONES = ['today', 'upcoming', 'late', 'done'] as const;
-
-const monthYearFormatter = new Intl.DateTimeFormat('pt-BR', {
-  month: 'long',
-  year: 'numeric',
-  timeZone: 'UTC',
-});
-
-function weekMonthLabel(startKey: string, endKey: string): string {
-  const start = monthYearFormatter.format(new Date(`${startKey}T00:00:00.000Z`));
-  const end = monthYearFormatter.format(new Date(`${endKey}T00:00:00.000Z`));
-  if (start === end) {
-    return start;
-  }
-  return `${start.replace(/ de \d{4}$/, '')} – ${end}`;
-}
 
 function dayTone(dateKey: string, todayKey: string, day: PmpDailyGoal | null): DayTone {
   const planned = day?.plannedQuantity ?? 0;
@@ -237,7 +228,7 @@ function PmpDayCalendarCell({
       className={cn(
         'relative flex h-full min-h-[24rem] flex-col transition-opacity',
         toneCellClass[tone],
-        isToday && 'z-10 shadow-xl ring-2 ring-zinc-900 ring-inset dark:ring-zinc-300',
+        isToday && 'z-10 shadow-xl ring-2 ring-zinc-900 ring-inset dark:ring-white',
         tone === 'empty' && 'opacity-50',
         tone === 'late' && 'opacity-60 hover:opacity-100',
       )}
@@ -255,7 +246,7 @@ function PmpDayCalendarCell({
             {dayNumber} {monthLabel}
           </span>
           {isToday ? (
-            <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase">
+            <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase dark:bg-white dark:text-zinc-900">
               Hoje
             </span>
           ) : null}
@@ -275,7 +266,7 @@ function PmpDayCalendarCell({
                 toneGoalClass[tone],
               )}
             >
-              {piecesFormatter.format(planned)}
+             {piecesFormatter.format(produced)} / {piecesFormatter.format(planned)}
             </p>
             <p className="mt-1 text-sm font-medium opacity-60">peças</p>
           </div>
@@ -378,6 +369,7 @@ type PmpWeekCalendarProps = {
   dailyGoalByDate: Map<string, PmpDailyGoal>;
   todayKey: string;
   weekNumber: number;
+  weekYear: number;
   extraDayKey: string;
   actions?: ReactNode;
 };
@@ -387,6 +379,7 @@ function PmpWeekCalendar({
   dailyGoalByDate,
   todayKey,
   weekNumber,
+  weekYear,
   extraDayKey,
   actions,
 }: PmpWeekCalendarProps) {
@@ -408,11 +401,12 @@ function PmpWeekCalendar({
             <CalendarDays className="size-6" aria-hidden />
           </span>
           <div>
-            <p className="text-2xl font-bold tracking-tight capitalize sm:text-3xl">
-              {weekMonthLabel(firstKey, lastKey)}
+            <p className="text-2xl font-bold tracking-tight sm:text-3xl">
+              Semana {weekNumber}
+              <span className="font-medium text-muted-foreground"> / {weekYear}</span>
             </p>
             <p className="text-sm text-muted-foreground">
-              Semana {weekNumber} · {formatShortDateKey(firstKey)} a {formatShortDateKey(lastKey)}
+              {formatShortDateKey(firstKey)} a {formatShortDateKey(lastKey)}
             </p>
           </div>
         </div>
@@ -483,6 +477,33 @@ export function PmpWeeklyGoalDaysPage() {
 
   const goal = goalQuery.data;
   const [partDetailsOpen, setPartDetailsOpen] = useState(false);
+  const partPreviewQuery = useQuery({
+    queryKey: pmpWeeklyGoalPartPreviewQueryKey(blockId, goalId),
+    queryFn: () => getPmpWeeklyGoalPartPreview(blockId, goalId),
+    enabled: blockId.length > 0 && goalId.length > 0,
+    staleTime: 5 * 60_000,
+  });
+  const partImageUrl = partPreviewQuery.data?.imageUrl ?? null;
+
+  const goalInfo: Array<{ icon: LucideIcon; label: string; value: string }> = goal
+    ? [
+        {
+          icon: Target,
+          label: 'Meta semanal',
+          value: `${piecesFormatter.format(goal.plannedQuantity)} pç`,
+        },
+        {
+          icon: CircleCheck,
+          label: 'Produzido',
+          value: `${piecesFormatter.format(goal.producedQuantity)} pç`,
+        },
+        {
+          icon: Hourglass,
+          label: 'Saldo a produzir',
+          value: `${piecesFormatter.format(Math.max(0, goal.plannedQuantity - goal.producedQuantity))} pç`,
+        },
+      ]
+    : [];
   const isoWeek = goal ? getIsoWeekFromKey(goal.weekStart) : null;
   const todayKey = localTodayKey();
 
@@ -567,37 +588,135 @@ export function PmpWeeklyGoalDaysPage() {
           <ArrowLeft className="size-4" />
         </Button>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">
-              {goal ? `Peça ${goal.productCode}` : 'Meta por dia'}
-            </h1>
-            {goal ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 text-muted-foreground hover:text-foreground"
-                aria-label={`Ver detalhes da peça ${goal.productCode}`}
-                title="Ver detalhes da peça"
-                onClick={() => setPartDetailsOpen(true)}
-              >
-                <Eye className="size-4" />
-              </Button>
-            ) : null}
-          </div>
+          <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">
+            Meta diária {goal ? `— Peça ${goal.productCode}` : ''}
+          </h1>
           {goal && isoWeek ? (
             <p className="mt-1 text-sm text-muted-foreground">
               {goal.blockName} · Semana {isoWeek.week} ({formatIsoWeekRange(isoWeek)})
-              {goal.productName ? ` · ${goal.productName}` : ''}
             </p>
           ) : null}
         </div>
-        <img
-          src={logoSystem}
-          alt="Logo do sistema"
-          className="size-12 shrink-0 object-contain dark:brightness-0 dark:invert"
-        />
       </header>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <section
+          className={cn(
+            'relative min-w-0 text-brand-foreground drop-shadow-sm',
+            goalCardEnter,
+            'motion-safe:delay-75',
+          )}
+          aria-label="Peça"
+        >
+          <NotchedPanelShape corner="top-right" className="fill-brand" />
+          <img
+            src={logoSystem}
+            alt="PCP"
+            className="pointer-events-none absolute top-0 right-0 object-contain p-3.5 dark:brightness-0 dark:invert"
+            style={{ width: NOTCH_CUT, height: NOTCH_CUT }}
+            draggable={false}
+          />
+
+          <div className="relative flex h-full items-center p-5 pr-24 sm:p-6 sm:pr-24">
+            <div className="flex min-w-0 items-center gap-5">
+              <button
+                type="button"
+                className="group/part relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-2 shadow-md outline-none ring-brand-foreground/40 transition-transform hover:scale-[1.03] focus-visible:ring-4 disabled:pointer-events-none sm:size-28"
+                onClick={() => setPartDetailsOpen(true)}
+                disabled={!goal}
+                aria-label={goal ? `Ver detalhes da peça ${goal.productCode}` : 'Peça'}
+                title="Ver detalhes da peça"
+              >
+                {partImageUrl ? (
+                  <img
+                    src={partImageUrl}
+                    alt=""
+                    className="max-h-full max-w-full object-contain"
+                    draggable={false}
+                  />
+                ) : partPreviewQuery.isPending && goal ? (
+                  <span className="size-8 animate-pulse rounded-full bg-zinc-200" />
+                ) : (
+                  <Package className="size-10 text-zinc-400" aria-hidden />
+                )}
+                <span className="absolute inset-0 flex items-center justify-center bg-zinc-950/45 text-white opacity-0 transition-opacity group-hover/part:opacity-100">
+                  <Eye className="size-5" aria-hidden />
+                </span>
+              </button>
+
+              <div className="min-w-0">
+                <p className="text-xs font-medium tracking-wide text-brand-foreground/70 uppercase">
+                  Meta diária da peça
+                </p>
+                <h1 className="truncate text-3xl leading-tight font-bold tracking-tight sm:text-4xl">
+                  {goal ? goal.productCode : 'Carregando…'}
+                </h1>
+                {goal?.productName ? (
+                  <p className="truncate text-base text-brand-foreground/85">{goal.productName}</p>
+                ) : null}
+                {goal ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-foreground/10 px-2.5 py-1">
+                      <Factory className="size-3.5 opacity-70" aria-hidden />
+                      CC <span className="font-mono">{goal.costCenter}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-foreground/10 px-2.5 py-1">
+                      <Workflow className="size-3.5 opacity-70" aria-hidden />
+                      OP <span className="font-mono">{goal.operation}</span>
+                    </span>
+                    {goal.sectorName ? (
+                      <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full bg-brand-foreground/10 px-2.5 py-1">
+                        {goal.sectorName}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        {goal ? (
+          <section
+            className={cn(
+              'relative overflow-hidden rounded-2xl bg-brand p-5 text-brand-foreground shadow-md sm:p-6',
+              goalCardEnter,
+              'motion-safe:delay-150',
+            )}
+            aria-label="Atendimento da meta semanal"
+          >
+            <div
+              className="pointer-events-none absolute -top-24 -right-24 size-64 rounded-full bg-brand-foreground/5"
+              aria-hidden
+            />
+            <div
+              className="pointer-events-none absolute -bottom-20 -left-16 size-48 rounded-full bg-brand-foreground/5"
+              aria-hidden
+            />
+            <div className="relative flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
+              <PmpAttainmentGauge
+                produced={goal.producedQuantity}
+                planned={goal.plannedQuantity}
+                className="w-full sm:w-56"
+              />
+              <dl className="flex flex-col divide-y divide-brand-foreground/15 rounded-xl bg-brand-foreground/10 text-sm sm:w-64">
+                {goalInfo.map((item, index) => (
+                  <div
+                    key={item.label}
+                    className={cn('flex items-center gap-3 px-4 py-3', goalInfoRowEnter)}
+                    style={{ animationDelay: `${250 + index * 60}ms` }}
+                  >
+                    <item.icon className="size-4 shrink-0 opacity-70" aria-hidden />
+                    <dt className="flex-1 text-brand-foreground/80">{item.label}</dt>
+                    <dd className="font-semibold tabular-nums">{item.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </section>
+        ) : null}
+      </div>
 
       {goal ? (
         <PmpPartDetailsDialog
@@ -636,77 +755,6 @@ export function PmpWeeklyGoalDaysPage() {
 
       {goal ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div
-              className={cn(
-                'rounded-xl border border-border/60 bg-card p-4',
-                goalCardEnter,
-                SUMMARY_CARD_DELAYS[0],
-              )}
-            >
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Centro de custo / operação
-              </p>
-              <p className="mt-1 flex flex-wrap items-center gap-2 text-sm font-semibold">
-                <span className="font-mono text-brand">{goal.costCenter}</span>
-                <Badge variant="outline" className="font-mono">
-                  OP {goal.operation}
-                </Badge>
-              </p>
-              {goal.sectorName ? (
-                <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {goal.sectorName}
-                </p>
-              ) : null}
-            </div>
-            <div
-              className={cn(
-                'rounded-xl border border-border/60 bg-card p-4',
-                goalCardEnter,
-                SUMMARY_CARD_DELAYS[1],
-              )}
-            >
-              <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <Target className="size-3.5 text-brand" aria-hidden />
-                Meta semanal
-              </p>
-              <p className="mt-1 text-2xl font-bold tabular-nums">
-                {piecesFormatter.format(goal.plannedQuantity)} pç
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Saldo a produzir:{' '}
-                {piecesFormatter.format(
-                  Math.max(0, goal.plannedQuantity - goal.producedQuantity),
-                )}{' '}
-                pç
-              </p>
-            </div>
-            <div
-              className={cn(
-                'rounded-xl border-2 border-primary bg-primary p-4 text-primary-foreground',
-                goalCardEnter,
-                SUMMARY_CARD_DELAYS[2],
-              )}
-            >
-              <p className="text-xs font-medium uppercase tracking-wide text-primary-foreground/80">
-                Produzido na semana
-              </p>
-              <p className="mt-1 text-2xl font-bold tabular-nums">
-                {piecesFormatter.format(goal.producedQuantity)} /{' '}
-                {piecesFormatter.format(goal.plannedQuantity)} pç
-                <span className="ml-1 text-base font-semibold text-primary-foreground/80">
-                  ({productionProgressPercent(goal.producedQuantity, goal.plannedQuantity)}%)
-                </span>
-              </p>
-              <ProducedPlannedProgressBar
-                variant="on-primary"
-                className="mt-2"
-                produced={goal.producedQuantity}
-                planned={goal.plannedQuantity}
-              />
-            </div>
-          </div>
-
           {goal.dailyGoals.length === 0 ? (
             <div className="rounded-xl border border-dashed px-6 py-14 text-center text-sm text-muted-foreground">
               Meta semanal ainda não distribuída por dia.
@@ -717,6 +765,7 @@ export function PmpWeeklyGoalDaysPage() {
               dailyGoalByDate={dailyGoalByDate}
               todayKey={todayKey}
               weekNumber={isoWeek?.week ?? 0}
+              weekYear={isoWeek?.year ?? Number(goal.weekStart.slice(0, 4))}
               extraDayKey={saturdayKey}
               actions={extraDayActions}
             />
