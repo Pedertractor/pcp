@@ -1,4 +1,4 @@
-import { ChartGantt, Factory, House, Users } from 'lucide-react';
+import { ChartGantt, Factory, House, Users, type LucideIcon } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 import logoSystem from '@/public/logo-system.png';
@@ -19,9 +19,65 @@ import {
 import { useWebSession } from '@/hooks/auth/use-web-session';
 import { canAccessUserManagement } from '@/lib/role-access';
 
+type NavItem = {
+  label: string;
+  to: string;
+  icon: LucideIcon;
+  isActive: (pathname: string) => boolean;
+};
+
+type NavSection = {
+  label: string;
+  items: NavItem[];
+  visible?: boolean;
+};
+
 export function AppSidebar() {
   const { pathname } = useLocation();
   const { data: user } = useWebSession();
+
+  const sections: NavSection[] = [
+    {
+      label: 'Geral',
+      items: [
+        { label: 'Início', to: '/', icon: House, isActive: (path) => path === '/' },
+      ],
+    },
+    {
+      label: 'Produção',
+      items: [
+        {
+          label: 'Controle Produtivo',
+          to: '/controle-produtivo',
+          icon: Factory,
+          isActive: (path) => path.startsWith('/controle-produtivo'),
+        },
+      ],
+    },
+    {
+      label: 'Planejamento',
+      items: [
+        {
+          label: 'PMP',
+          to: '/pmp',
+          icon: ChartGantt,
+          isActive: (path) => path.startsWith('/pmp'),
+        },
+      ],
+    },
+    {
+      label: 'Administração',
+      visible: canAccessUserManagement(user?.role),
+      items: [
+        {
+          label: 'Usuários',
+          to: '/usuarios',
+          icon: Users,
+          isActive: (path) => path.startsWith('/usuarios'),
+        },
+      ],
+    },
+  ];
 
   return (
     <Sidebar collapsible="icon">
@@ -51,70 +107,35 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent className="gap-2 py-2">
-        <SidebarGroup className="gap-0 p-1">
-          <SidebarGroupLabel className="mb-0 h-5 px-2 py-0 text-[11px] leading-none">
-            Início
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  size="sm"
-                  tooltip="Início"
-                  isActive={pathname === '/'}
-                >
-                  <Link to="/">
-                    <House />
-                    <span>Início</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  size="sm"
-                  tooltip="Controle Produtivo"
-                  isActive={pathname.startsWith('/controle-produtivo')}
-                >
-                  <Link to="/controle-produtivo">
-                    <Factory />
-                    <span>Controle Produtivo</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  size="sm"
-                  tooltip="PMP"
-                  isActive={pathname.startsWith('/pmp')}
-                >
-                  <Link to="/pmp">
-                    <ChartGantt />
-                    <span>PMP</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {canAccessUserManagement(user?.role) ? (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    size="sm"
-                    tooltip="Usuários"
-                    isActive={pathname.startsWith('/usuarios')}
-                  >
-                    <Link to="/usuarios">
-                      <Users />
-                      <span>Usuários</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ) : null}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      <SidebarContent className="gap-3 py-2">
+        {sections
+          .filter((section) => section.visible !== false)
+          .map((section) => (
+            <SidebarGroup key={section.label} className="gap-0.5 p-1">
+              <SidebarGroupLabel className="mb-0 h-6 px-2 py-0 text-[11px] leading-none font-semibold tracking-wider uppercase">
+                {section.label}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-0.5">
+                  {section.items.map((item) => (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton
+                        asChild
+                        size="sm"
+                        tooltip={item.label}
+                        isActive={item.isActive(pathname)}
+                      >
+                        <Link to={item.to}>
+                          <item.icon />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">

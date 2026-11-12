@@ -11,6 +11,7 @@
     "seed:dev": "tsx src/database/seed.ts",
     "sync:planning": "tsx src/scripts/sync-bloco-f-planning.ts",
     "clear:block-planning": "tsx src/scripts/clear-block-planning-data.ts",
+    "pmp:redistribute": "tsx src/scripts/redistribute-pmp-daily-goals.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "prisma generate",

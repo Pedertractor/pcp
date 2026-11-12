@@ -11,7 +11,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { SectorPicker } from '@/components/blocks/sector-picker';
-import { PmpCostCenterOperationsTable } from '@/components/pmp/pmp-cost-center-operations-editor';
 import {
   MAX_CLASSES_PER_BLOCK,
   PmpSeriesEditor,
@@ -62,15 +61,6 @@ const STEPS: Array<{ id: UpsertStep; title: string; icon: typeof Boxes }> = [
   { id: 'series', title: 'Classe', icon: Layers },
 ];
 
-function buildOperationsMap(block: PmpBlockSummary): Record<string, number[]> {
-  return Object.fromEntries(
-    block.costCenters.map((cc) => [
-      cc.sectorIdApi,
-      cc.operations.map((op) => op.operation),
-    ]),
-  );
-}
-
 type PmpBlockUpsertDialogProps = {
   block?: PmpBlockSummary;
   open?: boolean;
@@ -97,9 +87,6 @@ export function PmpBlockUpsertDialog({
   const [sectorIds, setSectorIds] = useState<string[]>(
     () => block?.costCenters.map((cc) => cc.sectorIdApi) ?? [],
   );
-  const [operationsBySector, setOperationsBySector] = useState<
-    Record<string, number[]>
-  >(() => (block ? buildOperationsMap(block) : {}));
   const [seriesDrafts, setSeriesDrafts] = useState<PmpSeriesDraft[]>(() =>
     toSeriesDrafts(block?.series ?? []),
   );
@@ -117,12 +104,10 @@ export function PmpBlockUpsertDialog({
     if (block) {
       setName(block.name);
       setSectorIds(block.costCenters.map((cc) => cc.sectorIdApi));
-      setOperationsBySector(buildOperationsMap(block));
       setSeriesDrafts(toSeriesDrafts(block.series));
     } else {
       setName('');
       setSectorIds([]);
-      setOperationsBySector({});
       setSeriesDrafts([]);
       setThemeFile(null);
     }
@@ -169,30 +154,14 @@ export function PmpBlockUpsertDialog({
   }, [sectors, sectorIds, block]);
 
   function toggleSector(id: string) {
-    const sector = sectors.find((item) => item.id === id);
-    if (sectorIds.includes(id)) {
-      setSectorIds((prev) => prev.filter((item) => item !== id));
-      setOperationsBySector((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      return;
-    }
-    setSectorIds((prev) => [...prev, id]);
-    setOperationsBySector((prev) => ({
-      ...prev,
-      [id]:
-        prev[id] ?? (sector?.operationId != null ? [sector.operationId] : []),
-    }));
+    setSectorIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
   }
 
   const mutation = useMutation({
     mutationFn: async (values: CreatePmpBlockFormValues) => {
-      const costCenters = values.sectorIds.map((sectorIdApi) => ({
-        sectorIdApi,
-        operations: operationsBySector[sectorIdApi] ?? [],
-      }));
+      const costCenters = values.sectorIds.map((sectorIdApi) => ({ sectorIdApi }));
       const series = toSeriesInput(seriesDrafts);
       let saved;
       if (isEdit && block) {
@@ -303,17 +272,13 @@ export function PmpBlockUpsertDialog({
     mutation.mutate(parsed.data);
   }
 
-  const operationsCount = sectorIds.reduce(
-    (total, id) => total + (operationsBySector[id]?.length ?? 0),
-    0,
-  );
   const partCodesCount = seriesDrafts.reduce(
     (total, item) => total + item.parts.length,
     0,
   );
   const stepSummary: Record<UpsertStep, string> = {
     general: name.trim() || 'Sem nome',
-    costCenters: `${sectorIds.length} CC · ${operationsCount} ${operationsCount === 1 ? 'operação' : 'operações'}`,
+    costCenters: `${sectorIds.length} ${sectorIds.length === 1 ? 'centro de custo' : 'centros de custo'}`,
     series: `${seriesDrafts[0]?.name.trim() ? `Classe ${seriesDrafts[0].name.trim()}` : 'Sem classe'} · ${partCodesCount} ${partCodesCount === 1 ? 'peça' : 'peças'}`,
   };
   const isLastStep = step === STEPS[STEPS.length - 1]!.id;
@@ -338,7 +303,7 @@ export function PmpBlockUpsertDialog({
             {isEdit ? 'Editar bloco PMP' : 'Novo bloco PMP'}
           </DialogTitle>
           <DialogDescription>
-            Defina o bloco, os centros de custo com suas operações e as peças da
+            Defina o bloco, os centros de custo e as peças + operações da
             classe que o PMP balanceado vai considerar.
           </DialogDescription>
         </DialogHeader>
@@ -459,25 +424,9 @@ export function PmpBlockUpsertDialog({
                   onRetry={() => void sectorsQuery.refetch()}
                 />
               </div>
-
-              {selectedSectors.length > 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium">
-                    Operações por centro de custo
-                  </p>
-                  <PmpCostCenterOperationsTable
-                    items={selectedSectors.map((sector) => ({
-                      id: sector.id,
-                      costCenter: sector.costCenter,
-                      sectorName: sector.name,
-                    }))}
-                    operationsById={operationsBySector}
-                    onChange={(id, next) =>
-                      setOperationsBySector((prev) => ({ ...prev, [id]: next }))
-                    }
-                  />
-                </div>
-              ) : null}
+              <p className="text-xs text-muted-foreground">
+                A operação de cada peça vem da classe (CONCATENAR: código da peça + operação).
+              </p>
             </>
           ) : null}
 

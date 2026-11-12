@@ -1,5 +1,10 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
+  fetchPartByPartCodeFromBaseApi,
+  fetchPartByPartNumberFromBaseApi,
+  pickFirstPartImagePublicUrl,
+} from '../integrations/part-base-api.js';
+import {
   isPmpBlockThemeMimeType,
   PMP_BLOCK_THEME_MAX_BYTES,
 } from '../lib/pmp-block-theme-storage.js';
@@ -10,11 +15,13 @@ import type {
   UpdatePmpBlockBody,
 } from '../schemas/pmp-block.schemas.js';
 import type {
+  OpenPmpExtraDayBody,
   PmpWeeklyGoalParams,
   PmpWeeklyGoalsQuery,
 } from '../schemas/pmp-goal.schemas.js';
 import { PmpBlockService } from '../services/pmp-block.service.js';
 import { PmpGoalService } from '../services/pmp-goal.service.js';
+import { PmpRedistributionService } from '../services/pmp-redistribution.service.js';
 
 export async function listPmpBlockWeeksController(
   req: FastifyRequest<{ Params: PmpBlockIdParams }>,
@@ -59,6 +66,52 @@ export async function getPmpWeeklyGoalController(
   const service = new PmpGoalService(req.server.prisma);
   const goal = await service.getWeeklyGoal(req.params.id, req.params.goalId);
   return reply.status(200).send(goal);
+}
+
+export async function openPmpExtraDayController(
+  req: FastifyRequest<{ Params: PmpWeeklyGoalParams; Body: OpenPmpExtraDayBody }>,
+  reply: FastifyReply,
+) {
+  const { id, goalId } = req.params;
+  await new PmpRedistributionService(req.server.prisma).openExtraDay(
+    id,
+    goalId,
+    req.body?.fromDate,
+  );
+  const goal = await new PmpGoalService(req.server.prisma).getWeeklyGoal(id, goalId);
+  return reply.status(200).send(goal);
+}
+
+export async function closePmpExtraDayController(
+  req: FastifyRequest<{ Params: PmpWeeklyGoalParams }>,
+  reply: FastifyReply,
+) {
+  const { id, goalId } = req.params;
+  await new PmpRedistributionService(req.server.prisma).closeExtraDay(id, goalId);
+  const goal = await new PmpGoalService(req.server.prisma).getWeeklyGoal(id, goalId);
+  return reply.status(200).send(goal);
+}
+
+export async function getPmpWeeklyGoalPartPreviewController(
+  req: FastifyRequest<{ Params: PmpWeeklyGoalParams }>,
+  reply: FastifyReply,
+) {
+  const goal = await req.server.prisma.productionWeeklyGoal.findFirst({
+    where: { id: req.params.goalId, pmpBlockId: req.params.id },
+    select: { productCode: true },
+  });
+  if (!goal) {
+    throw new AppError('Meta semanal não encontrada.', 404);
+  }
+
+  const productCode = goal.productCode.trim();
+  let part = productCode ? await fetchPartByPartCodeFromBaseApi(productCode) : null;
+  if (!part && productCode) {
+    part = await fetchPartByPartNumberFromBaseApi(productCode);
+  }
+
+  const imageUrl = part ? pickFirstPartImagePublicUrl(part) : null;
+  return reply.status(200).send({ imageUrl });
 }
 
 export async function listPmpBlocksController(

@@ -1,6 +1,5 @@
 import { Receipt } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -44,33 +43,16 @@ export function PmpCostCentersViewDialog({
             block.costCenters.map((cc) => (
               <li
                 key={cc.id}
-                className="flex flex-col gap-2 rounded-lg bg-muted/50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                className="rounded-lg bg-muted/50 px-3 py-2.5"
               >
-                <div className="min-w-0">
-                  <span className="font-mono text-sm font-semibold text-brand">
-                    {cc.costCenter}
-                  </span>
-                  {cc.sectorName ? (
-                    <p className="truncate text-xs text-muted-foreground">
-                      {cc.sectorName}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-1 sm:justify-end">
-                  {cc.operations.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">Sem OP</span>
-                  ) : (
-                    cc.operations.map((op) => (
-                      <Badge
-                        key={op.id}
-                        variant="outline"
-                        className="font-mono text-[11px] tabular-nums"
-                      >
-                        OP {op.operation}
-                      </Badge>
-                    ))
-                  )}
-                </div>
+                <span className="font-mono text-sm font-semibold text-brand">
+                  {cc.costCenter}
+                </span>
+                {cc.sectorName ? (
+                  <p className="truncate text-xs text-muted-foreground">
+                    {cc.sectorName}
+                  </p>
+                ) : null}
               </li>
             ))
           )}

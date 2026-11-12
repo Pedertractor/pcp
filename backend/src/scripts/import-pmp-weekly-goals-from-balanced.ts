@@ -1,6 +1,6 @@
 /**
  * Importa as metas semanais do bloco: os CONCATENAR (código da peça + operação) vêm da aba
- * "PMP BALANCEADO" (só os que estão nas séries do bloco) e as quantidades são a soma das linhas
+ * "PMP BALANCEADO" (só os que estão na classe do bloco) e as quantidades são a soma das linhas
  * da aba "extract_relatorio" com o mesmo CONCATENAR.
  *
  * Meta semanal = ATRASO + DIA01..último dia da semana, dividida igualmente pelos dias úteis.
@@ -27,7 +27,8 @@ type GoalDraft = {
   concat: string;
   productCode: string;
   productName: string | null;
-  operationId: string;
+  costCenterId: string;
+  operation: number;
   daily: number[];
 };
 
@@ -111,9 +112,7 @@ async function main() {
     where: { name: blockName },
     select: {
       id: true,
-      costCenters: {
-        select: { costCenter: true, operations: { select: { id: true, operation: true } } },
-      },
+      costCenters: { select: { id: true, costCenter: true } },
       series: { select: { parts: { select: { partCode: true, operation: true } } } },
     },
   });
@@ -126,14 +125,11 @@ async function main() {
     ),
   );
   if (seriesConcats.size === 0) {
-    throw new Error(`Bloco PMP "${blockName}" não tem séries com peças vinculadas.`);
+    throw new Error(`Bloco PMP "${blockName}" não tem classe com peças vinculadas.`);
   }
-  const operationIdByKey = new Map<string, string>();
-  for (const cc of block.costCenters) {
-    for (const op of cc.operations) {
-      operationIdByKey.set(`${stripLeadingZeros(cc.costCenter)}|${op.operation}`, op.id);
-    }
-  }
+  const costCenterIdByCode = new Map(
+    block.costCenters.map((cc) => [stripLeadingZeros(cc.costCenter), cc.id]),
+  );
 
   const workbook = XLSX.readFile(filePath);
 
@@ -149,16 +145,17 @@ async function main() {
     if (!productCode || !seriesConcats.has(concat) || drafts.has(concat)) continue;
     const operation = Number(concat.slice(productCode.length));
     const costCenter = stripLeadingZeros(row[balancedCostCenter]);
-    const operationId = operationIdByKey.get(`${costCenter}|${operation}`);
-    if (!operationId) {
-      outsideBlock.push(`${concat} (CC ${costCenter} OP ${operation})`);
+    const costCenterId = costCenterIdByCode.get(costCenter);
+    if (!costCenterId) {
+      outsideBlock.push(`${concat} (CC ${costCenter})`);
       continue;
     }
     drafts.set(concat, {
       concat,
       productCode,
       productName: null,
-      operationId,
+      costCenterId,
+      operation,
       daily: Array.from({ length: WORKING_DAYS }, () => 0),
     });
   }
@@ -195,7 +192,8 @@ async function main() {
         await tx.productionWeeklyGoal.create({
           data: {
             pmpBlockId: block.id,
-            pmpCostCenterOperationId: draft.operationId,
+            pmpCostCenterId: draft.costCenterId,
+            operation: draft.operation,
             productCode: draft.productCode,
             productName: draft.productName,
             weekStart,
@@ -220,11 +218,11 @@ async function main() {
   );
   const missing = [...drafts.keys()].filter((concat) => !totals.has(concat));
   console.log(
-    `${BALANCED_SHEET}: ${drafts.size} CONCATENAR da série; ${totals.size} encontrados no ${EXTRACT_SHEET}.`,
+    `${BALANCED_SHEET}: ${drafts.size} CONCATENAR da classe; ${totals.size} encontrados no ${EXTRACT_SHEET}.`,
   );
   console.log(`Semana ${weekStartKey}: ${goals.length} metas semanais, ${totalPieces} peças.`);
   if (outsideBlock.length > 0) {
-    console.log(`Sem CC/operação no bloco: ${outsideBlock.join(', ')}`);
+    console.log(`CC fora do bloco: ${outsideBlock.join(', ')}`);
   }
   if (missing.length > 0) {
     console.log(`Sem linha no ${EXTRACT_SHEET}: ${missing.join(', ')}`);

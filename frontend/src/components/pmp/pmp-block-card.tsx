@@ -21,10 +21,7 @@ export function PmpBlockCard({ block, className }: PmpBlockCardProps) {
   const [costCentersOpen, setCostCentersOpen] = useState(false);
   const themeImage = usePmpBlockThemeImage(block.themeImage);
 
-  const operationsCount = block.costCenters.reduce(
-    (total, cc) => total + cc.operations.length,
-    0,
-  );
+  const blockClass = block.series[0]?.name;
 
   return (
     <>
@@ -40,7 +37,16 @@ export function PmpBlockCard({ block, className }: PmpBlockCardProps) {
           aria-label={`Abrir metas semanais de ${block.name}`}
         />
 
-        <div className="pointer-events-none flex aspect-[16/10] items-center justify-center bg-muted p-8 dark:bg-black">
+        <div className="pointer-events-none relative flex aspect-[16/10] items-center justify-center bg-muted p-8 dark:bg-black">
+          <div className="absolute top-4 left-5 flex flex-col text-foreground">
+            <span className="text-xs font-medium tracking-widest uppercase opacity-70">
+              Classe
+            </span>
+            <span className="text-3xl leading-tight font-bold">
+              {blockClass ?? '—'}
+            </span>
+          </div>
+
           {themeImage.src ? (
             <img
               src={themeImage.src}
@@ -63,8 +69,7 @@ export function PmpBlockCard({ block, className }: PmpBlockCardProps) {
               <p className="truncate text-lg font-semibold">{block.name}</p>
               <p className="text-sm opacity-85">
                 {block.costCenters.length} centro
-                {block.costCenters.length === 1 ? '' : 's'} de custo ·{' '}
-                {operationsCount} operaç{operationsCount === 1 ? 'ão' : 'ões'}
+                {block.costCenters.length === 1 ? '' : 's'} de custo
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">

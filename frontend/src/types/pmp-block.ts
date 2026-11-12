@@ -15,17 +15,11 @@ export type PmpBlockThemeImage = {
   updatedAt: string;
 };
 
-export type PmpCostCenterOperation = {
-  id: string;
-  operation: number;
-};
-
 export type PmpCostCenter = {
   id: string;
   costCenter: string;
   sectorName: string | null;
   sectorIdApi: string;
-  operations: PmpCostCenterOperation[];
 };
 
 export type PmpSeriesPart = {
@@ -51,7 +45,6 @@ export type PmpBlockSummary = {
 
 export type PmpCostCenterInput = {
   sectorIdApi: string;
-  operations: number[];
 };
 
 export type PmpSeriesInput = {

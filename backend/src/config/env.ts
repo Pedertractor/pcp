@@ -19,6 +19,8 @@ const envSchema = z.object({
   KEY: z.string().min(1),
   COOKIE_SECURE: z.enum(['true', 'false']).optional(),
   UPLOADS_DIR: z.string().default('uploads'),
+  PMP_REDISTRIBUTION_ENABLED: z.enum(['true', 'false']).default('true'),
+  PMP_REDISTRIBUTION_HOUR: z.coerce.number().int().min(0).max(23).default(2),
 });
 
 const parsed = envSchema.safeParse(process.env);

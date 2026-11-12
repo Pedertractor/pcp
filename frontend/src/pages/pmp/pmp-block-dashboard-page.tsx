@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/chart';
 import {
   addDaysToKey,
+  EXTRA_DAY_OFFSET,
   formatIsoWeekParam,
   formatIsoWeekRange,
   formatShortDateKey,
@@ -49,6 +50,7 @@ import { NOTCH_CUT, NotchedPanelShape } from '@/components/notched-panel-shape';
 import { usePmpBlockThemeImage } from '@/hooks/pmp/use-pmp-block-theme-image';
 import { cn } from '@/lib/utils';
 import logoSystem from '@/public/logo-system.png';
+import calendarPmpImage from '@/public/pmp/calendar-pmp.png';
 import { getPmpBlock, pmpBlockDetailQueryKey } from '@/services/pmp/pmp-block.service';
 import {
   getPmpBlockDashboard,
@@ -138,7 +140,10 @@ export function PmpBlockDashboardPage() {
   const planned = dashboard?.totals.plannedQuantity ?? 0;
   const produced = dashboard?.totals.producedQuantity ?? 0;
   const dayByDate = new Map((dashboard?.days ?? []).map((day) => [day.date, day]));
-  const dailyData = Array.from({ length: WORKING_DAYS_PER_WEEK }, (_, index) => {
+  const extraDay = dayByDate.get(addDaysToKey(weekStart, EXTRA_DAY_OFFSET));
+  const hasExtraDay = Boolean(extraDay && (extraDay.plannedQuantity > 0 || extraDay.producedQuantity > 0));
+  const dayCount = hasExtraDay ? EXTRA_DAY_OFFSET + 1 : WORKING_DAYS_PER_WEEK;
+  const dailyData = Array.from({ length: dayCount }, (_, index) => {
     const date = addDaysToKey(weekStart, index);
     const day = dayByDate.get(date);
     const dayPlanned = day?.plannedQuantity ?? 0;
@@ -166,14 +171,15 @@ export function PmpBlockDashboardPage() {
     {
       icon: Workflow,
       label: 'Operações',
-      value: block?.costCenters.reduce((total, cc) => total + cc.operations.length, 0) ?? 0,
+      value: new Set(sortedSeries.flatMap((series) => series.parts.map((part) => part.operation)))
+        .size,
     },
     ...sortedSeries.map((series) => ({
         icon: Package,
         label: `Itens da classe ${series.name}`,
         value: series.parts.length,
       })),
-    { icon: Target, label: 'Metas na semana', value: dashboard?.goalsCount ?? 0 },
+    { icon: Target, label: 'Tipos de peças', value: dashboard?.goalsCount ?? 0 },
     { icon: Factory, label: 'Centros com meta', value: costCenterData.length },
   ].map((item) => ({ ...item, value: piecesFormatter.format(item.value) }));
 
@@ -247,9 +253,14 @@ export function PmpBlockDashboardPage() {
       ) : null}
 
       {dashboard && dashboard.goalsCount === 0 ? (
-        <Card>
+        <Card className={dashboardPanelFromBottom}>
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
-            <Target className="size-10 text-muted-foreground" aria-hidden />
+            <img
+              src={calendarPmpImage}
+              alt=""
+              className="mb-2 size-40 object-contain dark:brightness-90"
+              draggable={false}
+            />
             <p className="font-medium">Nenhuma meta cadastrada nesta semana.</p>
             <p className="text-sm text-muted-foreground">
               Escolha outra semana ou importe as metas do PMP.

@@ -55,3 +55,37 @@ export async function getPmpWeeklyGoal(
     `/pmp/blocks/${blockId}/weekly-goals/${goalId}`,
   );
 }
+
+/** Abre o sábado e redistribui o saldo de `fromDate` (padrão: hoje) até ele. */
+export async function openPmpExtraDay(
+  blockId: string,
+  goalId: string,
+  fromDate?: string,
+): Promise<PmpWeeklyGoalDetail> {
+  return httpClient.post<PmpWeeklyGoalDetail, { fromDate?: string }>(
+    `/pmp/blocks/${blockId}/weekly-goals/${goalId}/extra-day`,
+    fromDate ? { fromDate } : {},
+  );
+}
+
+export async function closePmpExtraDay(
+  blockId: string,
+  goalId: string,
+): Promise<PmpWeeklyGoalDetail> {
+  return httpClient.delete<PmpWeeklyGoalDetail>(
+    `/pmp/blocks/${blockId}/weekly-goals/${goalId}/extra-day`,
+  );
+}
+
+export function pmpWeeklyGoalPartPreviewQueryKey(blockId: string, goalId: string) {
+  return ['pmp', 'blocks', blockId, 'weekly-goals', 'part-preview', goalId] as const;
+}
+
+export async function getPmpWeeklyGoalPartPreview(
+  blockId: string,
+  goalId: string,
+): Promise<{ imageUrl: string | null }> {
+  return httpClient.get<{ imageUrl: string | null }>(
+    `/pmp/blocks/${blockId}/weekly-goals/${goalId}/part-preview`,
+  );
+}

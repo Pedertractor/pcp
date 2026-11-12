@@ -1,17 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  closePmpExtraDayController,
   createPmpBlockController,
   getPmpBlockController,
   getPmpBlockDashboardController,
   getPmpBlockThemeImageController,
   getPmpWeeklyGoalController,
+  getPmpWeeklyGoalPartPreviewController,
   listPmpBlocksController,
   listPmpBlockWeeksController,
   listPmpWeeklyGoalsController,
+  openPmpExtraDayController,
   updatePmpBlockController,
   uploadPmpBlockThemeImageController,
 } from '../controllers/pmp-block.controller.js';
 import { commonErrors } from '../schemas/error.schemas.js';
+import { blockProductionOrderBasePartPreviewResponseSchema } from '../schemas/production-order.schemas.js';
 import {
   createPmpBlockBodySchema,
   listPmpBlocksResponseSchema,
@@ -25,10 +29,12 @@ import {
 import {
   listPmpBlockWeeksResponseSchema,
   listPmpWeeklyGoalsResponseSchema,
+  openPmpExtraDayBodySchema,
   pmpBlockDashboardSchema,
   pmpWeeklyGoalDetailSchema,
   pmpWeeklyGoalParamsSchema,
   pmpWeeklyGoalsQuerySchema,
+  type OpenPmpExtraDayBody,
   type PmpWeeklyGoalParams,
   type PmpWeeklyGoalsQuery,
 } from '../schemas/pmp-goal.schemas.js';
@@ -106,6 +112,63 @@ export function pmpRoutes(fastify: FastifyInstance) {
       onRequest: [fastify.authenticate],
     },
     getPmpWeeklyGoalController,
+  );
+
+  fastify.get<{ Params: PmpWeeklyGoalParams }>(
+    '/blocks/:id/weekly-goals/:goalId/part-preview',
+    {
+      schema: {
+        summary: 'Public URL of first part image from base API (by part code or number)',
+        tags: ['PMP'],
+        security: [{ cookieAuth: [] }],
+        params: pmpWeeklyGoalParamsSchema,
+        response: {
+          200: blockProductionOrderBasePartPreviewResponseSchema.describe(
+            'Image URL or null',
+          ),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    getPmpWeeklyGoalPartPreviewController,
+  );
+
+  fastify.post<{ Params: PmpWeeklyGoalParams; Body: OpenPmpExtraDayBody }>(
+    '/blocks/:id/weekly-goals/:goalId/extra-day',
+    {
+      schema: {
+        summary: 'Open Saturday (current week) and redistribute the balance from the base day',
+        tags: ['PMP'],
+        security: [{ cookieAuth: [] }],
+        params: pmpWeeklyGoalParamsSchema,
+        body: openPmpExtraDayBodySchema,
+        response: {
+          200: pmpWeeklyGoalDetailSchema.describe('Weekly goal with Saturday'),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    openPmpExtraDayController,
+  );
+
+  fastify.delete<{ Params: PmpWeeklyGoalParams }>(
+    '/blocks/:id/weekly-goals/:goalId/extra-day',
+    {
+      schema: {
+        summary: 'Close Saturday and return its balance to the working days',
+        tags: ['PMP'],
+        security: [{ cookieAuth: [] }],
+        params: pmpWeeklyGoalParamsSchema,
+        response: {
+          200: pmpWeeklyGoalDetailSchema.describe('Weekly goal without Saturday'),
+          ...commonErrors,
+        },
+      },
+      onRequest: [fastify.authenticate, fastify.csrfProtection],
+    },
+    closePmpExtraDayController,
   );
 
   fastify.get(
@@ -201,7 +264,7 @@ export function pmpRoutes(fastify: FastifyInstance) {
     '/blocks/:id',
     {
       schema: {
-        summary: 'Update PMP block (name, cost centers, operations)',
+        summary: 'Update PMP block (name, cost centers, class)',
         tags: ['PMP'],
         security: [{ cookieAuth: [] }],
         params: pmpBlockIdParamsSchema,

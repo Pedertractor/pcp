@@ -10,17 +10,11 @@ export const pmpBlockThemeImageSchema = z.object({
   updatedAt: z.string(),
 });
 
-export const pmpCostCenterOperationSchema = z.object({
-  id: z.string(),
-  operation: z.number().int(),
-});
-
 export const pmpCostCenterSchema = z.object({
   id: z.string(),
   costCenter: z.string(),
   sectorName: z.string().nullable(),
   sectorIdApi: z.string(),
-  operations: z.array(pmpCostCenterOperationSchema),
 });
 
 export const pmpSeriesPartSchema = z.object({
@@ -56,9 +50,6 @@ export type PmpBlockIdParams = z.infer<typeof pmpBlockIdParamsSchema>;
 
 const pmpCostCenterInputSchema = z.object({
   sectorIdApi: z.string().trim().min(1),
-  operations: z
-    .array(z.number().int().positive('Operação deve ser um número positivo'))
-    .default([]),
 });
 
 const pmpSeriesInputSchema = z.object({

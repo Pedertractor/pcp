@@ -6,6 +6,9 @@ import {
   CalendarRange,
   ChevronLeft,
   ChevronRight,
+  CircleCheck,
+  CircleX,
+  Hourglass,
   Loader2Icon,
   Package,
   Pencil,
@@ -39,17 +42,21 @@ import {
 import { useWebSession } from '@/hooks/auth/use-web-session';
 import { usePmpBlockThemeImage } from '@/hooks/pmp/use-pmp-block-theme-image';
 import { canAccessUserManagement } from '@/lib/role-access';
+import { cn } from '@/lib/utils';
 import logoSystem from '@/public/logo-system.png';
 import dashPmpImage from '@/public/pmp/dash-pmp.png';
 import {
+  addDaysToKey,
+  EXTRA_DAY_OFFSET,
   formatIsoWeekParam,
   formatIsoWeekRange,
   getIsoWeek,
-  getIsoWeekFromKey,
   isoWeeksInYear,
   isoWeekStartKey,
   parseIsoWeekParam,
   shiftIsoWeek,
+  toDateKey,
+  WORKING_DAYS_PER_WEEK,
   type IsoWeek,
 } from '@/lib/iso-week';
 import {
@@ -62,8 +69,63 @@ import {
   pmpBlockWeeksQueryKey,
   pmpWeeklyGoalsQueryKey,
 } from '@/services/pmp/pmp-goal.service';
+import type { PmpWeeklyGoalItem } from '@/types/pmp-goal';
 
 const piecesFormatter = new Intl.NumberFormat('pt-BR');
+
+const weeksPageEnter = cn(
+  'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both motion-reduce:animate-none',
+);
+const weeksHeaderEnter = cn(weeksPageEnter, 'motion-safe:slide-in-from-top-3');
+const weeksToolbarEnter = cn(
+  weeksPageEnter,
+  'motion-safe:slide-in-from-top-2 motion-safe:delay-75',
+);
+const weeksContentEnter = cn(
+  weeksPageEnter,
+  'motion-safe:slide-in-from-bottom-3 motion-safe:delay-150',
+);
+const weeksAsideEnter = cn(
+  weeksPageEnter,
+  'motion-safe:slide-in-from-right-4 motion-safe:zoom-in-[0.98] motion-safe:delay-200',
+);
+const weeksRowEnter = cn(
+  'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 motion-safe:ease-out motion-safe:fill-mode-both motion-reduce:animate-none',
+);
+const ROW_STAGGER_MS = 25;
+const ROW_STAGGER_MAX = 20;
+
+function localTodayKey(): string {
+  const now = new Date();
+  return toDateKey(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())));
+}
+
+type GoalStatus = 'done' | 'pending' | 'overdue';
+
+function GoalStatusIcon({ status }: { status: GoalStatus }) {
+  if (status === 'done') {
+    return (
+      <CircleCheck
+        className="size-4 text-emerald-600 dark:text-emerald-400"
+        aria-label="Meta atingida"
+      />
+    );
+  }
+  if (status === 'overdue') {
+    return (
+      <CircleX
+        className="size-4 text-red-600 dark:text-red-400"
+        aria-label="Meta não atingida"
+      />
+    );
+  }
+  return (
+    <Hourglass
+      className="size-4 text-amber-500 dark:text-amber-400"
+      aria-label="Em andamento"
+    />
+  );
+}
 
 export function PmpBlockWeeksPage() {
   const navigate = useNavigate();
@@ -122,16 +184,7 @@ export function PmpBlockWeeksPage() {
       };
     });
   }, [selectedWeek.year, goalsCountByWeekStart]);
-
-  const weeksWithGoals = useMemo(
-    () =>
-      (weeksQuery.data ?? []).map((week) => ({
-        ...week,
-        isoWeek: getIsoWeekFromKey(week.weekStart),
-      })),
-    [weeksQuery.data],
-  );
-
+  
   const goals = goalsQuery.data ?? [];
   const totals = useMemo(
     () =>
@@ -145,13 +198,24 @@ export function PmpBlockWeeksPage() {
     [goals],
   );
 
+  const todayKey = localTodayKey();
+
+  const goalStatus = (goal: PmpWeeklyGoalItem): GoalStatus => {
+    if (goal.plannedQuantity > 0 && goal.producedQuantity >= goal.plannedQuantity) {
+      return 'done';
+    }
+    const lastDayOffset =
+      goal.daysCount > WORKING_DAYS_PER_WEEK ? EXTRA_DAY_OFFSET : WORKING_DAYS_PER_WEEK - 1;
+    return todayKey > addDaysToKey(weekStart, lastDayOffset) ? 'overdue' : 'pending';
+  };
+
   const openGoal = (goalId: string) =>
     navigate(`/pmp/${blockId}/metas/${goalId}?semana=${weekParam}`);
 
   return (
     <div className="grid min-h-dvh gap-4 bg-background p-3 sm:gap-6 sm:p-6 lg:h-dvh lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
     <div className="flex min-w-0 flex-col gap-4 lg:min-h-0">
-      <header className="flex items-start gap-3">
+      <header className={cn('flex items-start gap-3', weeksHeaderEnter)}>
         <Button
           type="button"
           variant="outline"
@@ -191,7 +255,12 @@ export function PmpBlockWeeksPage() {
         ) : null}
       </header>
 
-      <div className="sticky top-0 z-20 -mx-3 flex flex-wrap items-center gap-2 border-b border-border/60 bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-background lg:px-0 lg:pt-0 lg:backdrop-blur-none">
+      <div
+        className={cn(
+          'sticky top-0 z-20 -mx-3 flex flex-wrap items-center gap-2 border-b border-border/60 bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-background lg:px-0 lg:pt-0 lg:backdrop-blur-none',
+          weeksToolbarEnter,
+        )}
+      >
         <CalendarRange className="size-4 text-brand" aria-hidden />
         <Button
           type="button"
@@ -277,7 +346,12 @@ export function PmpBlockWeeksPage() {
 
       {goalsQuery.isSuccess ? (
         <>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+          <div
+            className={cn(
+              'flex flex-wrap items-center gap-x-6 gap-y-3 text-sm',
+              weeksContentEnter,
+            )}
+          >
             <span className="flex items-center gap-1.5">
               <Package className="size-4 text-brand" aria-hidden />
               <span className="font-semibold tabular-nums">
@@ -307,7 +381,12 @@ export function PmpBlockWeeksPage() {
             ) : null}
           </div>
 
-          <div className="overflow-hidden rounded-lg border lg:min-h-0 lg:flex-1 [&_[data-slot=table-container]]:max-h-[70dvh] [&_[data-slot=table-container]]:overflow-auto lg:[&_[data-slot=table-container]]:h-full lg:[&_[data-slot=table-container]]:max-h-none">
+          <div
+            className={cn(
+              'overflow-hidden rounded-lg border lg:min-h-0 lg:flex-1 [&_[data-slot=table-container]]:max-h-[70dvh] [&_[data-slot=table-container]]:overflow-auto lg:[&_[data-slot=table-container]]:h-full lg:[&_[data-slot=table-container]]:max-h-none',
+              weeksContentEnter,
+            )}
+          >
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
                 <TableRow>
@@ -317,7 +396,7 @@ export function PmpBlockWeeksPage() {
                   <TableHead>Operação</TableHead>
                   <TableHead className="text-right">Meta semanal</TableHead>
                   <TableHead className="text-right">Produzido</TableHead>
-                  <TableHead className="w-40">Progresso</TableHead>
+                  <TableHead className="w-44">Progresso</TableHead>
                   <TableHead className="text-right">Dias</TableHead>
                 </TableRow>
               </TableHeader>
@@ -330,10 +409,13 @@ export function PmpBlockWeeksPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  goals.map((goal) => (
+                  goals.map((goal, index) => (
                     <TableRow
                       key={goal.id}
-                      className="cursor-pointer hover:bg-muted/45"
+                      className={cn('cursor-pointer hover:bg-muted/45', weeksRowEnter)}
+                      style={{
+                        animationDelay: `${200 + Math.min(index, ROW_STAGGER_MAX) * ROW_STAGGER_MS}ms`,
+                      }}
                       title="Ver meta por dia"
                       tabIndex={0}
                       role="button"
@@ -362,6 +444,11 @@ export function PmpBlockWeeksPage() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <ProducedPlannedProgressBar
+                            variant="status"
+                            overdue={
+                              goalStatus(goal) ===
+                              'overdue'
+                            }
                             className="flex-1"
                             produced={goal.producedQuantity}
                             planned={goal.plannedQuantity}
@@ -372,6 +459,11 @@ export function PmpBlockWeeksPage() {
                               goal.plannedQuantity,
                             )}
                             %
+                          </span>
+                          <span className="flex size-4 shrink-0 items-center justify-center">
+                            <GoalStatusIcon
+                              status={goalStatus(goal)}
+                            />
                           </span>
                         </div>
                       </TableCell>
@@ -388,7 +480,7 @@ export function PmpBlockWeeksPage() {
       ) : null}
     </div>
 
-      <aside className="lg:h-full lg:min-h-0">
+      <aside className={cn('lg:h-full lg:min-h-0', weeksAsideEnter)}>
         <button
           type="button"
           onClick={() => navigate(`/pmp/${blockId}/dashboard?semana=${weekParam}`)}

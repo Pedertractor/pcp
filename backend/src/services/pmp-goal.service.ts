@@ -17,12 +17,7 @@ function fromDateKey(key: string): Date {
 }
 
 const weeklyGoalInclude = {
-  pmpCostCenterOperation: {
-    select: {
-      operation: true,
-      pmpCostCenter: { select: { costCenter: true, sectorName: true } },
-    },
-  },
+  pmpCostCenter: { select: { costCenter: true, sectorName: true } },
   _count: { select: { dailyGoals: true } },
 } as const;
 
@@ -30,14 +25,12 @@ type WeeklyGoalRow = {
   id: string;
   productCode: string;
   productName: string | null;
+  operation: number;
   weekStart: Date;
   weekEnd: Date;
   plannedQuantity: number;
   producedQuantity: number;
-  pmpCostCenterOperation: {
-    operation: number;
-    pmpCostCenter: { costCenter: string; sectorName: string | null };
-  };
+  pmpCostCenter: { costCenter: string; sectorName: string | null };
   _count: { dailyGoals: number };
 };
 
@@ -46,9 +39,9 @@ function toWeeklyGoalItem(goal: WeeklyGoalRow): PmpWeeklyGoalItem {
     id: goal.id,
     productCode: goal.productCode,
     productName: goal.productName,
-    costCenter: goal.pmpCostCenterOperation.pmpCostCenter.costCenter,
-    sectorName: goal.pmpCostCenterOperation.pmpCostCenter.sectorName,
-    operation: goal.pmpCostCenterOperation.operation,
+    costCenter: goal.pmpCostCenter.costCenter,
+    sectorName: goal.pmpCostCenter.sectorName,
+    operation: goal.operation,
     weekStart: toDateKey(goal.weekStart),
     weekEnd: toDateKey(goal.weekEnd),
     plannedQuantity: goal.plannedQuantity,
@@ -126,9 +119,7 @@ export class PmpGoalService {
           plannedQuantity: true,
           producedQuantity: true,
           weekEnd: true,
-          pmpCostCenterOperation: {
-            select: { pmpCostCenter: { select: { costCenter: true, sectorName: true } } },
-          },
+          pmpCostCenter: { select: { costCenter: true, sectorName: true } },
         },
       }),
       this.prisma.productionDailyGoal.groupBy({
@@ -141,7 +132,7 @@ export class PmpGoalService {
 
     const byCostCenter = new Map<string, PmpBlockDashboard['costCenters'][number]>();
     for (const goal of goals) {
-      const cc = goal.pmpCostCenterOperation.pmpCostCenter;
+      const cc = goal.pmpCostCenter;
       const item = byCostCenter.get(cc.costCenter) ?? {
         costCenter: cc.costCenter,
         sectorName: cc.sectorName,

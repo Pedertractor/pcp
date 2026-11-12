@@ -13,6 +13,7 @@ import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
 import prismaPlugin from './plugins/prisma.js';
 import { authPlugin } from './plugins/auth.js';
+import pmpRedistributionScheduler from './plugins/pmp-redistribution-scheduler.js';
 import { healthRoutes } from './routes/health.routes.js';
 import mainRoutes from './routes/main.routes.js';
 import { errorHandler } from './lib/errorHandler.js';
@@ -82,6 +83,7 @@ app.setErrorHandler(errorHandler);
 
 app.register(prismaPlugin);
 app.register(authPlugin);
+app.register(pmpRedistributionScheduler);
 
 app.register(healthRoutes);
 app.register(mainRoutes, { prefix: '/api' });

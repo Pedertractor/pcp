@@ -21,9 +21,6 @@ const pmpBlockInclude = {
   themeImage: true,
   costCenters: {
     orderBy: { costCenter: 'asc' as const },
-    include: {
-      operations: { orderBy: { operation: 'asc' as const } },
-    },
   },
   series: {
     orderBy: { name: 'asc' as const },
@@ -52,7 +49,6 @@ type PmpBlockWithRelations = {
     costCenter: string;
     sectorName: string | null;
     sectorIdApi: string;
-    operations: Array<{ id: string; operation: number }>;
   }>;
   series: Array<{
     id: string;
@@ -62,10 +58,6 @@ type PmpBlockWithRelations = {
 };
 
 type SeriesPart = { partCode: string; operation: number };
-
-function dedupeOperations(operations: number[]): number[] {
-  return [...new Set(operations)].sort((a, b) => a - b);
-}
 
 function sortSeriesParts<T extends SeriesPart>(parts: T[]): T[] {
   return [...parts].sort(
@@ -116,10 +108,6 @@ function toPmpBlockSummary(block: PmpBlockWithRelations): PmpBlockSummary {
       costCenter: cc.costCenter,
       sectorName: cc.sectorName,
       sectorIdApi: cc.sectorIdApi,
-      operations: cc.operations.map((op) => ({
-        id: op.id,
-        operation: op.operation,
-      })),
     })),
     series: block.series.map((series) => ({
       id: series.id,
@@ -176,9 +164,6 @@ export class PmpBlockService {
             costCenter: item.costCenter,
             sectorName: item.sectorName,
             sectorIdApi: item.sectorIdApi,
-            operations: {
-              create: item.operations.map((operation) => ({ operation })),
-            },
           })),
         },
         series: {
@@ -202,11 +187,7 @@ export class PmpBlockService {
   ): Promise<PmpBlockSummary> {
     const block = await this.prisma.pmpBlock.findUnique({
       where: { id: blockId },
-      include: {
-        costCenters: {
-          include: { operations: true },
-        },
-      },
+      include: { costCenters: true },
     });
     if (!block) {
       throw new AppError('Bloco PMP não encontrado', 404);
@@ -235,21 +216,14 @@ export class PmpBlockService {
       block.costCenters.map((cc) => [cc.sectorIdApi, cc]),
     );
 
-    const removedOperationIds = block.costCenters.flatMap((cc) => {
-      const next = nextBySectorId.get(cc.sectorIdApi);
-      if (!next) {
-        return cc.operations.map((op) => op.id);
-      }
-      const nextOps = new Set(next.operations);
-      return cc.operations
-        .filter((op) => !nextOps.has(op.operation))
-        .map((op) => op.id);
-    });
+    const removedCostCenterIds = block.costCenters
+      .filter((cc) => !nextBySectorId.has(cc.sectorIdApi))
+      .map((cc) => cc.id);
 
     await this.prisma.$transaction(async (tx) => {
-      if (removedOperationIds.length > 0) {
+      if (removedCostCenterIds.length > 0) {
         const removedDailyGoals = {
-          weeklyGoal: { pmpCostCenterOperationId: { in: removedOperationIds } },
+          weeklyGoal: { pmpCostCenterId: { in: removedCostCenterIds } },
         };
         await tx.productionGoalLoan.deleteMany({
           where: {
@@ -260,14 +234,11 @@ export class PmpBlockService {
           },
         });
         await tx.productionWeeklyGoal.deleteMany({
-          where: { pmpCostCenterOperationId: { in: removedOperationIds } },
+          where: { pmpCostCenterId: { in: removedCostCenterIds } },
         });
-      }
-
-      for (const cc of block.costCenters) {
-        if (!nextBySectorId.has(cc.sectorIdApi)) {
-          await tx.pmpCostCenter.delete({ where: { id: cc.id } });
-        }
+        await tx.pmpCostCenter.deleteMany({
+          where: { id: { in: removedCostCenterIds } },
+        });
       }
 
       for (const item of resolved) {
@@ -279,33 +250,9 @@ export class PmpBlockService {
               costCenter: item.costCenter,
               sectorName: item.sectorName,
               sectorIdApi: item.sectorIdApi,
-              operations: {
-                create: item.operations.map((operation) => ({ operation })),
-              },
             },
           });
           continue;
-        }
-
-        const nextOps = new Set(item.operations);
-        const toDelete = existing.operations.filter(
-          (op) => !nextOps.has(op.operation),
-        );
-        const currentOps = new Set(existing.operations.map((op) => op.operation));
-        const toCreate = item.operations.filter((op) => !currentOps.has(op));
-
-        if (toDelete.length > 0) {
-          await tx.pmpCostCenterOperation.deleteMany({
-            where: { id: { in: toDelete.map((op) => op.id) } },
-          });
-        }
-        if (toCreate.length > 0) {
-          await tx.pmpCostCenterOperation.createMany({
-            data: toCreate.map((operation) => ({
-              pmpCostCenterId: existing.id,
-              operation,
-            })),
-          });
         }
 
         await tx.pmpCostCenter.update({
@@ -398,7 +345,6 @@ export class PmpBlockService {
         sectorIdApi: sector.id,
         costCenter: sector.costCenter,
         sectorName: sector.name,
-        operations: dedupeOperations(item.operations),
       };
     });
   }

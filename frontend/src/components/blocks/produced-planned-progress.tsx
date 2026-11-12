@@ -18,12 +18,17 @@ export function ProducedPlannedProgressBar({
   produced,
   planned,
   variant = 'default',
+  overdue = false,
   className,
+  fillClassName,
 }: {
   produced: number;
   planned: number;
-  variant?: 'default' | 'on-primary';
+  variant?: 'default' | 'on-primary' | 'status';
+  overdue?: boolean;
   className?: string;
+  /** Substitui a cor de preenchimento calculada pela variante. */
+  fillClassName?: string;
 }) {
   const percent = productionProgressPercent(produced, planned);
   const width = productionBarFillPercent(produced, planned);
@@ -46,17 +51,24 @@ export function ProducedPlannedProgressBar({
       <div
         className={cn(
           'h-full rounded-full transition-[width] duration-300 ease-out',
-          variant === 'on-primary'
+          fillClassName ??
+          (variant === 'on-primary'
             ? complete
               ? 'bg-white'
               : inProgress
                 ? 'bg-white/95'
                 : 'bg-white/35'
-            : complete
+            : variant === 'status'
+              ? complete
+                ? 'bg-emerald-500'
+                : overdue
+                  ? 'bg-red-500'
+                  : 'bg-amber-400'
+              : complete
               ? 'bg-brand'
               : inProgress
                 ? 'bg-primary'
-                : 'bg-muted-foreground/35',
+                : 'bg-muted-foreground/35'),
         )}
         style={{ width: `${width}%` }}
       />

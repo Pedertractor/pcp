@@ -353,8 +353,8 @@ model PmpCostCenter {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  pmpBlock   PmpBlock                 @relation(fields: [pmpBlockId], references: [id], onDelete: Cascade)
-  operations PmpCostCenterOperation[]
+  pmpBlock    PmpBlock               @relation(fields: [pmpBlockId], references: [id], onDelete: Cascade)
+  weeklyGoals ProductionWeeklyGoal[]
 
   @@unique([pmpBlockId, costCenter])
   @@unique([pmpBlockId, sectorIdApi])
@@ -362,27 +362,12 @@ model PmpCostCenter {
   @@map("pmp_cost_centers")
 }
 
-/// Operação produtiva sob um centro de custo (uma CC pode ter várias operações).
-model PmpCostCenterOperation {
+/// A operação vem do CONCATENAR da classe do bloco (código da peça + operação).
+model ProductionWeeklyGoal {
   id              String @id @default(uuid())
+  pmpBlockId      String @map("pmp_block_id")
   pmpCostCenterId String @map("pmp_cost_center_id")
   operation       Int
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  pmpCostCenter PmpCostCenter          @relation(fields: [pmpCostCenterId], references: [id], onDelete: Cascade)
-  weeklyGoals   ProductionWeeklyGoal[]
-
-  @@unique([pmpCostCenterId, operation])
-  @@index([pmpCostCenterId])
-  @@map("pmp_cost_center_operations")
-}
-
-model ProductionWeeklyGoal {
-  id                       String   @id @default(uuid())
-  pmpBlockId               String   @map("pmp_block_id")
-  pmpCostCenterOperationId String   @map("pmp_cost_center_operation_id")
 
   productCode     String  @map("product_code")
   productName     String? @map("product_name")
@@ -396,12 +381,12 @@ model ProductionWeeklyGoal {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  pmpBlock               PmpBlock               @relation(fields: [pmpBlockId], references: [id], onDelete: Cascade)
-  pmpCostCenterOperation PmpCostCenterOperation @relation(fields: [pmpCostCenterOperationId], references: [id], onDelete: Restrict)
-  dailyGoals             ProductionDailyGoal[]
+  pmpBlock      PmpBlock              @relation(fields: [pmpBlockId], references: [id], onDelete: Cascade)
+  pmpCostCenter PmpCostCenter         @relation(fields: [pmpCostCenterId], references: [id], onDelete: Restrict)
+  dailyGoals    ProductionDailyGoal[]
 
-  @@unique([pmpBlockId, productCode, pmpCostCenterOperationId, weekStart])
-  @@index([weekStart, pmpCostCenterOperationId])
+  @@unique([pmpBlockId, productCode, pmpCostCenterId, operation, weekStart])
+  @@index([weekStart, pmpCostCenterId])
   @@index([pmpBlockId, weekStart])
   @@map("production_weekly_goals")
 }

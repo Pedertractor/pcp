@@ -69,6 +69,13 @@ export const pmpWeeklyGoalParamsSchema = z.object({
 
 export type PmpWeeklyGoalParams = z.infer<typeof pmpWeeklyGoalParamsSchema>;
 
+export const openPmpExtraDayBodySchema = z.object({
+  /** Dia base da redistribuição até o sábado (padrão: hoje). */
+  fromDate: dateKeySchema.optional(),
+});
+
+export type OpenPmpExtraDayBody = z.infer<typeof openPmpExtraDayBodySchema>;
+
 const plannedProducedSchema = z.object({
   plannedQuantity: z.number(),
   producedQuantity: z.number(),

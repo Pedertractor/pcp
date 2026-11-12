@@ -171,6 +171,8 @@ export function HomePage() {
             sideOpacity(hovered, 'pmp'),
           )}
         >
+          <div aria-hidden className="hidden h-10 shrink-0 lg:block" />
+
           <img
             src={pmpImage}
             alt=""
@@ -197,6 +199,11 @@ export function HomePage() {
           ) : null}
         </div>
       </Link>
+
+      <p className="pointer-events-none absolute right-6 bottom-5 z-10 flex items-center gap-3 text-xs font-semibold tracking-[0.2em] text-white/60 uppercase sm:right-12 lg:right-[5%]">
+        <span aria-hidden className="h-px w-8 bg-white/40" />
+        Pedertractor &amp; TractorComponents
+      </p>
     </div>
   );
 }

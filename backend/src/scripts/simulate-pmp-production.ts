@@ -40,7 +40,7 @@ async function main() {
     where: { pmpBlockId: block.id, weekStart: new Date(`${weekStartKey}T00:00:00.000Z`) },
     include: {
       dailyGoals: true,
-      pmpCostCenterOperation: { include: { pmpCostCenter: true } },
+      pmpCostCenter: true,
     },
   });
 
@@ -49,7 +49,7 @@ async function main() {
   let totalProduced = 0;
 
   for (const goal of goals) {
-    const costCenter = goal.pmpCostCenterOperation.pmpCostCenter.costCenter;
+    const costCenter = goal.pmpCostCenter.costCenter;
     const factor = ATTAINMENT_FACTORS[hash(costCenter) % ATTAINMENT_FACTORS.length];
     let weeklyProduced = 0;
 

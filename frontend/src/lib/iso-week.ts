@@ -2,6 +2,8 @@ export type IsoWeek = { year: number; week: number };
 
 /** Semanas do PMP vão de segunda a sexta. */
 export const WORKING_DAYS_PER_WEEK = 5;
+/** Sábado (dia extra) a partir da segunda-feira da semana. */
+export const EXTRA_DAY_OFFSET = 5;
 
 function utcDate(year: number, monthIndex: number, day: number): Date {
   return new Date(Date.UTC(year, monthIndex, day));
